@@ -1154,3 +1154,13 @@ email.document, ksef.invoice, connect_messagebox.message и др.).
 - [ ] Store-ключи `streams_filters`/`streams_kind`/`stream_channel_ids`
   зафиксированы тестами, но потребителей (веб-клиент) пока нет — сверить
   при OWL-фазе.
+- [x] Живой сквозной прогон мобильного API (2026-08-18): login → init →
+  channels → poll внутри контейнера streams19 — форматы по контракту.
+- [ ] **Cloudflare перед mirageflow.ca мешает мобильному API снаружи**:
+  голый curl получает 1010 (UA-фильтр), а POST /streams/mobile/v1/* через
+  публичный URL вернул «invalid CSRF token» (изнутри контейнера всё
+  работает). Разобраться с WAF/proxy-правилами до полевых испытаний
+  приложения — это настройка инфраструктуры, не код.
+- [ ] FCM-транспорт: реализовать `_streams_fcm_send` (HTTP v1) при
+  появлении ключей Firebase (`streams_mobile.fcm_service_account_json`),
+  плюс деактивация устройств по UNREGISTERED.

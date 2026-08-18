@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Ретраи доставки пушей: сеть и FCM бывают недоступны. -->
+    <record id="queue_job_function_streams_mobile_push" model="queue.job.function">
+        <field name="model_id" ref="model_streams_mobile_push"/>
+        <field name="method">_streams_process</field>
+        <field name="channel_id" ref="queue_job.channel_root"/>
+        <field name="edit_retry_pattern">{1: 60, 3: 300, 5: 1800}</field>
+    </record>
+
+    <!-- Страховка от выключенного jobrunner (как у транскрипции фазы 3). -->
+    <record id="ir_cron_streams_mobile_push" model="ir.cron">
+        <field name="name">Streams Mobile: deliver queued pushes</field>
+        <field name="model_id" ref="model_streams_mobile_push"/>
+        <field name="state">code</field>
+        <field name="code">model._streams_cron_process()</field>
+        <field name="interval_number">5</field>
+        <field name="interval_type">minutes</field>
+        <field name="active" eval="True"/>
+    </record>
+</odoo>

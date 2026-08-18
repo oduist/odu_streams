@@ -1,0 +1,4 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_streams_mobile_device_user,streams.mobile.device.user,model_streams_mobile_device,base.group_user,1,1,0,0
+access_streams_mobile_device_system,streams.mobile.device.system,model_streams_mobile_device,base.group_system,1,1,1,1
+access_streams_mobile_push_system,streams.mobile.push.system,model_streams_mobile_push,base.group_system,1,1,1,1

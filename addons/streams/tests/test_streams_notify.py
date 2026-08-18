@@ -3,6 +3,7 @@ import base64
 import json
 from unittest.mock import patch
 
+from odoo.addons.mail.tools.discuss import Store
 from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.tests import common, tagged
 from odoo.tools import mute_logger
@@ -38,22 +39,22 @@ class TestStreamsNotify(common.TransactionCase):
         cls.author = cls.env['res.users'].create({
             'name': 'Streams Notify Author',
             'login': 'streams.notify.author@example.com',
-            'groups_id': [(6, 0, [group_user.id])],
+            'group_ids': [(6, 0, [group_user.id])],
         })
         cls.receiver = cls.env['res.users'].create({
             'name': 'Streams Notify Receiver',
             'login': 'streams.notify.receiver@example.com',
-            'groups_id': [(6, 0, [group_user.id])],
+            'group_ids': [(6, 0, [group_user.id])],
         })
         cls.stranger = cls.env['res.users'].create({
             'name': 'Streams Notify Stranger',
             'login': 'streams.notify.stranger@example.com',
-            'groups_id': [(6, 0, [group_user.id])],
+            'group_ids': [(6, 0, [group_user.id])],
         })
         cls.portal_user = cls.env['res.users'].create({
             'name': 'Streams Notify Portal',
             'login': 'streams.notify.portal@example.com',
-            'groups_id': [(6, 0, [cls.env.ref('base.group_portal').id])],
+            'group_ids': [(6, 0, [cls.env.ref('base.group_portal').id])],
         })
 
     # ------------------------------------------------------------
@@ -83,12 +84,24 @@ class TestStreamsNotify(common.TransactionCase):
         return self._rows(notify).filtered(
             lambda row: row.user_id == user)
 
+    def _flush_bus(self):
+        """19: записи `bus.bus` создаются на precommit — без него шина пуста."""
+        self.env.flush_all()
+        self.env.cr.precommit.run()
+
     def _last_bus_id(self):
+        self._flush_bus()
         last = self.env['bus.bus'].sudo().search([], order='id desc', limit=1)
         return last.id or 0
 
     def _bus_since(self, bus_id):
-        """Сообщения шины после указанного id: [(channel, type, payload)]."""
+        """Сообщения шины после указанного id: [(channel, type, payload)].
+
+        19: channel — JSON-строка ["<db>", "res.partner", <partner_id>]:
+        уведомления адресуются партнёру получателя; message — JSON
+        {"type": ..., "payload": ...}.
+        """
+        self._flush_bus()
         records = self.env['bus.bus'].sudo().search([('id', '>', bus_id)])
         result = []
         for record in records:
@@ -112,8 +125,27 @@ class TestStreamsNotify(common.TransactionCase):
         return self.env['ir.attachment'].with_user(user).create(values)
 
     def _notify_channel(self, user, create=False):
-        return self.env['mail.channel']._streams_get_notifications_channel(
+        return self.env['discuss.channel']._streams_get_notifications_channel(
             user, create=create)
+
+    def _unread_counter(self, channel, user):
+        """19: счётчик непрочитанного живёт на `discuss.channel.member`,
+        а не на канале; считается для владельца — читаем от его лица."""
+        member = self.env['discuss.channel.member'].sudo().search([
+            ('channel_id', '=', channel.id),
+            ('partner_id', '=', user.partner_id.id),
+        ], limit=1)
+        self.assertTrue(member, 'владелец — участник своего личного канала')
+        member = member.with_user(user)
+        member.invalidate_recordset(['message_unread_counter'])
+        return member.message_unread_counter
+
+    def _init_messaging_payload(self, user):
+        """19: `_init_messaging(store)` наполняет Store; наш payload лежит
+        в глобальных значениях синглтона 'Store'."""
+        store = Store()
+        user.with_user(user)._init_messaging(store)
+        return store.get_result()['Store']['streams_notify']
 
     # ------------------------------------------------------------
     # 1
@@ -222,7 +254,7 @@ class TestStreamsNotify(common.TransactionCase):
             self.author, user_ids=[self.receiver.id],
             attachment_ids=[attachment.id])
 
-        attachment.invalidate_cache()
+        attachment.invalidate_recordset()
         self.assertEqual(attachment.sudo().res_model, 'mail.notify')
         self.assertEqual(attachment.sudo().res_id, notify.id)
         self.assertEqual(notify.attachment_ids, attachment)
@@ -276,12 +308,12 @@ class TestStreamsNotify(common.TransactionCase):
         self.assertFalse(row.read_date)
 
         self._notify_model(self.receiver).streams_notify_mark_read([notify.id])
-        row.invalidate_cache()
+        row.invalidate_recordset()
         first_read = row.read_date
         self.assertTrue(first_read)
 
         self._notify_model(self.receiver).streams_notify_mark_read([notify.id])
-        row.invalidate_cache()
+        row.invalidate_recordset()
         self.assertEqual(
             row.read_date, first_read, 'повтор не перетирает время прочтения')
 
@@ -302,23 +334,21 @@ class TestStreamsNotify(common.TransactionCase):
 
         channel = self._notify_channel(self.receiver)
         self.assertTrue(channel, 'канал получателя создан при отправке')
-        channel_as_user = channel.with_user(self.receiver).sudo()
-        channel_as_user.invalidate_cache()
-        self.assertEqual(channel_as_user.message_unread_counter, 2)
+        # 19: message_unread_counter переехал с канала на участника
+        self.assertEqual(self._unread_counter(channel, self.receiver), 2)
 
         notify_model.streams_notify_mark_read([first.id, second.id])
         self.assertEqual(notify_model._streams_notify_counter(), 0)
-        channel_as_user.invalidate_cache()
-        self.assertEqual(channel_as_user.message_unread_counter, 0)
+        self.assertEqual(self._unread_counter(channel, self.receiver), 0)
 
     # ------------------------------------------------------------
     # 9
     # ------------------------------------------------------------
     def test_09_pending_popups_in_init_messaging(self):
         notify = self._send(self.author, user_ids=[self.receiver.id])
-        values = self.receiver.with_user(self.receiver)._init_messaging()
+        # 19: _init_messaging наполняет Store, а не возвращает dict
+        payload = self._init_messaging_payload(self.receiver)
 
-        payload = values['streams_notify']
         self.assertEqual(payload['counter'], 1)
         self.assertTrue(payload['channel_id'])
         self.assertEqual([item['id'] for item in payload['pending']],
@@ -326,9 +356,9 @@ class TestStreamsNotify(common.TransactionCase):
 
         self._notify_model(self.receiver).streams_notify_popup_shown(
             [notify.id])
-        values = self.receiver.with_user(self.receiver)._init_messaging()
+        payload = self._init_messaging_payload(self.receiver)
         self.assertFalse(
-            values['streams_notify']['pending'],
+            payload['pending'],
             'показанный попап второй раз не всплывает')
 
     # ------------------------------------------------------------
@@ -350,7 +380,7 @@ class TestStreamsNotify(common.TransactionCase):
             messages_before, messages_after,
             'уведомление не создаёт mail.message на записи (§12.1)')
         self.assertFalse(
-            self.env['mail.channel'].sudo().with_context(
+            self.env['discuss.channel'].sudo().with_context(
                 active_test=False).search([
                     ('channel_kind', '=', 'record'),
                     ('res_model', '=', 'res.partner'),
@@ -455,7 +485,7 @@ class TestStreamsNotify(common.TransactionCase):
 
         settings.with_user(self.receiver).set_res_users_settings(
             {'is_streams_notify_sound_muted': True})
-        settings.invalidate_cache()
+        settings.invalidate_recordset()
         self.assertTrue(settings.is_streams_notify_sound_muted)
 
         formatted = settings._res_users_settings_format()
@@ -478,9 +508,14 @@ class TestStreamsNotify(common.TransactionCase):
         self.assertFalse(item['read_date'])
 
         news = [
-            payload for _channel, msg_type, payload in self._bus_since(bus_id)
+            (channel, payload)
+            for channel, msg_type, payload in self._bus_since(bus_id)
             if msg_type == mail_notify.BUS_NEW
         ]
         self.assertEqual(len(news), 1, 'получателю ушло ровно одно new')
-        self.assertEqual(news[0]['id'], notify.id)
-        self.assertEqual(news[0]['counter'], 1)
+        channel, payload = news[0]
+        self.assertEqual(payload['id'], notify.id)
+        self.assertEqual(payload['counter'], 1)
+        self.assertEqual(
+            channel[1:], ['res.partner', self.receiver.partner_id.id],
+            'уведомление адресовано партнёру получателя')

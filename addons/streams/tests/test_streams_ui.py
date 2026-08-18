@@ -1,4 +1,5 @@
 # -*- encoding: utf-8 -*-
+from odoo.addons.mail.tools.discuss import Store
 from odoo.tests import common, tagged
 
 
@@ -15,7 +16,8 @@ class TestStreamsUi(common.TransactionCase):
         cls.internal_user = cls.env['res.users'].create({
             'name': 'Streams UI User',
             'login': 'streams.ui@example.com',
-            'groups_id': [(6, 0, [cls.env.ref('base.group_user').id])],
+            # 19: groups_id переименовано в group_ids
+            'group_ids': [(6, 0, [cls.env.ref('base.group_user').id])],
         })
         cls.internal_partner = cls.internal_user.partner_id
         cls.external_partner = cls._make_partner('Streams UI External')
@@ -30,7 +32,7 @@ class TestStreamsUi(common.TransactionCase):
         })
 
     def _channel_of(self, record):
-        return self.env['mail.channel'].sudo().with_context(
+        return self.env['discuss.channel'].sudo().with_context(
             active_test=False).search([
                 ('channel_kind', '=', 'record'),
                 ('res_model', '=', record._name),
@@ -43,6 +45,16 @@ class TestStreamsUi(common.TransactionCase):
             body='Start', message_type='comment',
             subtype_xmlid='mail.mt_comment')
         return partner, self._channel_of(partner)
+
+    def _store_channel(self, channel):
+        """Данные канала в клиентской выдаче.
+
+        19: `channel_info()` удалён — клиент получает данные через Store;
+        персональные ключи (`streams_filters`) считаются для пользователя
+        env, от чьего лица собирается Store.
+        """
+        data = Store().add(channel).get_result()['discuss.channel']
+        return next(item for item in data if item['id'] == channel.id)
 
     # ------------------------------------------------------------
     # ОБРАТНАЯ ПРОЕКЦИЯ (§11.2)
@@ -65,7 +77,7 @@ class TestStreamsUi(common.TransactionCase):
             'сообщение видно в чаттере записи')
 
     def test_02_plain_channel_post_stays_in_channel(self):
-        channel = self.env['mail.channel'].create({
+        channel = self.env['discuss.channel'].create({
             'name': 'Streams UI Plain Channel',
             'channel_type': 'channel',
         })
@@ -73,7 +85,7 @@ class TestStreamsUi(common.TransactionCase):
             body='Hello', message_type='comment',
             subtype_xmlid='mail.mt_comment')
         self.assertEqual(
-            message.model, 'mail.channel',
+            message.model, 'discuss.channel',
             'обычный канал остаётся хранилищем своих сообщений')
         self.assertEqual(message.res_id, channel.id)
 
@@ -82,12 +94,14 @@ class TestStreamsUi(common.TransactionCase):
     # ------------------------------------------------------------
 
     def test_03_add_members_posts_no_notification(self):
+        # 19: ядро само не постит joined/left для channel_type='channel' —
+        # тест фиксирует это поведение как инвариант канала записи
         partner, channel = self._start_discussion('Streams UI Invite')
         before = self.env['mail.message'].sudo().search_count([
-            ('model', '=', 'mail.channel'), ('res_id', '=', channel.id)])
+            ('model', '=', 'discuss.channel'), ('res_id', '=', channel.id)])
         channel.sudo().add_members(partner_ids=self.internal_partner.ids)
         after = self.env['mail.message'].sudo().search_count([
-            ('model', '=', 'mail.channel'), ('res_id', '=', channel.id)])
+            ('model', '=', 'discuss.channel'), ('res_id', '=', channel.id)])
         self.assertEqual(
             after, before,
             'канал записи не заводит служебных «invited/joined»')
@@ -101,7 +115,8 @@ class TestStreamsUi(common.TransactionCase):
     def test_04_channel_info_exposes_record_and_filters(self):
         partner, channel = self._start_discussion('Streams UI Info')
         channel.sudo().add_members(partner_ids=self.env.user.partner_id.ids)
-        info = channel.sudo().channel_info()[0]
+        # 19: channel_info() удалён — данные канала берутся из Store
+        info = self._store_channel(channel.sudo())
         self.assertEqual(info['channel_kind'], 'record')
         self.assertEqual(info['res_model'], 'res.partner')
         self.assertEqual(info['res_id'], partner.id)
@@ -114,11 +129,12 @@ class TestStreamsUi(common.TransactionCase):
         })
 
     def test_05_plain_channel_info_has_no_record(self):
-        channel = self.env['mail.channel'].create({
+        channel = self.env['discuss.channel'].create({
             'name': 'Streams UI Plain Info',
             'channel_type': 'channel',
         })
-        info = channel.sudo().channel_info()[0]
+        # 19: channel_info() удалён — данные канала берутся из Store
+        info = self._store_channel(channel.sudo())
         self.assertFalse(info['channel_kind'])
         self.assertFalse(info['res_model'])
         self.assertFalse(info['res_id'])
@@ -135,10 +151,12 @@ class TestStreamsUi(common.TransactionCase):
             stored['comment'], 'нетронутые потоки остаются по умолчанию')
 
         self.assertEqual(
-            channel.sudo().channel_info()[0]['streams_filters']['change'],
+            self._store_channel(channel.sudo())['streams_filters']['change'],
             True, 'фильтры переживают перечитывание канала')
 
-        other_info = channel.with_user(self.internal_user).channel_info()[0]
+        # 19: персональная выдача — Store, собранный от лица участника
+        other_info = self._store_channel(
+            channel.with_user(self.internal_user))
         self.assertFalse(
             other_info['streams_filters']['change'],
             'фильтры другого участника не меняются')
@@ -156,7 +174,9 @@ class TestStreamsUi(common.TransactionCase):
     def test_08_message_format_carries_stream_keys(self):
         partner, channel = self._start_discussion('Streams UI Format')
         message = partner.message_ids[:1]
-        payload = message.message_format()[0]
+        # 19: message_format() удалён — формат клиента собирается через Store
+        data = Store().add(message).get_result()['mail.message']
+        payload = next(item for item in data if item['id'] == message.id)
         self.assertEqual(payload['streams_kind'], 'comment')
         self.assertEqual(payload['stream_channel_ids'], channel.ids)
 
@@ -194,10 +214,12 @@ class TestStreamsUi(common.TransactionCase):
             rule.unlink()
 
     def test_10_compose_wizard_accepts_subtype_xmlid(self):
+        # 19: default_subtype_xmlid принимает само ядро (наш override
+        # композера удалён); default_res_id ядром запрещён — default_res_ids
         partner = self._make_partner('Streams UI Compose')
         wizard = self.env['mail.compose.message'].with_context(
             default_model='res.partner',
-            default_res_id=partner.id,
+            default_res_ids=partner.ids,
             default_subtype_xmlid='streams.mt_message',
         ).create({'body': 'External'})
         self.assertEqual(

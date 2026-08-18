@@ -29,18 +29,24 @@ class TestStreamsGuest(common.TransactionCase):
             'login': 'streams.guest.manager@example.com',
             # право записи на res.partner: подопытная модель тестов — контакт,
             # а в этой базе group_user на неё только чтение
-            'groups_id': [(6, 0, [
+            'group_ids': [(6, 0, [
                 cls.env.ref('base.group_user').id,
                 cls.env.ref('base.group_partner_manager').id,
             ])],
         })
         cls.customer = cls._make_partner('Streams Guest Customer')
         cls.other_customer = cls._make_partner('Streams Guest Other')
-        # ответ гостя по email маршрутизируется только при заполненном catchall
-        cls.env['ir.config_parameter'].sudo().set_param(
-            'mail.catchall.domain', 'example.com')
-        cls.env['ir.config_parameter'].sudo().set_param(
-            'mail.catchall.alias', 'catchall')
+        # ответ гостя по email маршрутизируется только при заполненном catchall.
+        # 19: catchall живёт не в ir.config_parameter, а в mail.alias.domain
+        # компании — без него _notify_get_reply_to возвращает default
+        alias_domain = cls.env['mail.alias.domain'].search(
+            [('name', '=', 'example.com')], limit=1)
+        if not alias_domain:
+            alias_domain = cls.env['mail.alias.domain'].create({
+                'name': 'example.com',
+                'catchall_alias': 'catchall',
+            })
+        cls.env.company.alias_domain_id = alias_domain
 
     @classmethod
     def _make_partner(cls, name):
@@ -61,7 +67,7 @@ class TestStreamsGuest(common.TransactionCase):
         record.with_user(self.manager).message_post(
             body='First comment', message_type='comment',
             subtype_xmlid='mail.mt_comment')
-        channel = self.env['mail.channel'].sudo().with_context(
+        channel = self.env['discuss.channel'].sudo().with_context(
             active_test=False).search([
                 ('channel_kind', '=', 'record'),
                 ('res_model', '=', record._name),
@@ -74,7 +80,7 @@ class TestStreamsGuest(common.TransactionCase):
         """Пройти визард приглашения от лица сотрудника."""
         user = user or self.manager
         if channel is None and record is not None:
-            channel = self.env['mail.channel'].sudo().with_context(
+            channel = self.env['discuss.channel'].sudo().with_context(
                 active_test=False).search([
                     ('channel_kind', '=', 'record'),
                     ('res_model', '=', record._name),
@@ -104,6 +110,18 @@ class TestStreamsGuest(common.TransactionCase):
 
     def _visible_ids(self, participant):
         return participant._streams_visible_messages(limit=100).ids
+
+    def _member_unread(self, channel, user):
+        """19: счётчик непрочитанного живёт на `discuss.channel.member`,
+        а не на канале — читаем участника от лица его пользователя."""
+        member = self.env['discuss.channel.member'].sudo().search([
+            ('channel_id', '=', channel.id),
+            ('partner_id', '=', user.partner_id.id),
+        ], limit=1)
+        self.assertTrue(member, 'подписчик стал участником канала')
+        member = member.with_user(user)
+        member.invalidate_recordset(['message_unread_counter'])
+        return member.message_unread_counter
 
     # ------------------------------------------------------------
     # 1. ПРИГЛАШЕНИЕ
@@ -150,7 +168,7 @@ class TestStreamsGuest(common.TransactionCase):
     def test_01b_invite_from_chatter_creates_channel(self):
         """Пятый триггер §5.1 (решение 2 от 2026-08-18)."""
         record = self._make_partner('Guest Invite No Channel')
-        self.assertFalse(self.env['mail.channel'].sudo().with_context(
+        self.assertFalse(self.env['discuss.channel'].sudo().with_context(
             active_test=False).search([
                 ('channel_kind', '=', 'record'),
                 ('res_model', '=', record._name),
@@ -273,7 +291,10 @@ class TestStreamsGuest(common.TransactionCase):
         subtype_ids = [False] + [
             subtypes[key] for key in sorted(subtypes) if subtypes.get(key)]
         message_types = [
-            'comment', 'email', 'notification', 'user_notification']
+            'comment', 'email', 'notification', 'user_notification',
+            # 19: исходящие письма получили собственный тип — классификатор
+            # и гостевой домен обязаны сходиться и на нём
+            'email_outgoing']
         created = {}
         for subtype_id in subtype_ids:
             for message_type in message_types:
@@ -284,10 +305,10 @@ class TestStreamsGuest(common.TransactionCase):
                     'subtype_id': subtype_id,
                     'message_type': message_type,
                     'author_id': self.manager.partner_id.id,
-                    # сырое create мимо message_post: reply_to и record_name
-                    # задаём сами, иначе ядро полезет их вычислять
+                    # сырое create мимо message_post: reply_to задаём сами,
+                    # иначе ядро полезет его вычислять (record_name в 19 —
+                    # нехранимый compute, задавать его больше не нужно)
                     'reply_to': 'catchall@example.com',
-                    'record_name': record.display_name,
                 })
                 created[message.id] = (subtype_id, message_type)
         # user_notification к каналу не подшивается вовсе, остальное — да
@@ -759,7 +780,7 @@ Answer from the customer.
     def test_16_reply_subscribes_inviter(self):
         record = self._make_partner('Guest Inviter Subscribe')
         self._invite(record=record, user=self.manager)
-        channel = self.env['mail.channel'].sudo().with_context(
+        channel = self.env['discuss.channel'].sudo().with_context(
             active_test=False).search([
                 ('channel_kind', '=', 'record'),
                 ('res_model', '=', record._name),
@@ -778,7 +799,8 @@ Answer from the customer.
         self.assertIn(
             self.manager.partner_id, channel.sudo().channel_partner_ids,
             'подписка зеркалится в участники канала')
-        unread = channel.with_user(self.manager).message_unread_counter
+        # 19: message_unread_counter переехал с канала на участника
+        unread = self._member_unread(channel, self.manager)
         self.assertEqual(unread, 1, 'ответ гостя даёт непрочитанное')
 
     def test_16b_inactive_inviter_is_skipped(self):
@@ -786,13 +808,13 @@ Answer from the customer.
         inviter = self.env['res.users'].create({
             'name': 'Streams Guest Leaver',
             'login': 'streams.guest.leaver@example.com',
-            'groups_id': [(6, 0, [
+            'group_ids': [(6, 0, [
                 self.env.ref('base.group_user').id,
                 self.env.ref('base.group_partner_manager').id,
             ])],
         })
         self._invite(record=record, user=inviter)
-        channel = self.env['mail.channel'].sudo().with_context(
+        channel = self.env['discuss.channel'].sudo().with_context(
             active_test=False).search([
                 ('channel_kind', '=', 'record'),
                 ('res_model', '=', record._name),

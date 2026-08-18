@@ -15,7 +15,8 @@ class TestStreams(common.TransactionCase):
         cls.internal_user = cls.env['res.users'].create({
             'name': 'Streams Internal User',
             'login': 'streams.internal@example.com',
-            'groups_id': [(6, 0, [cls.env.ref('base.group_user').id])],
+            # 19: groups_id переименовано в group_ids
+            'group_ids': [(6, 0, [cls.env.ref('base.group_user').id])],
         })
         cls.internal_partner = cls.internal_user.partner_id
         cls.external_partner = cls._make_partner('Streams External')
@@ -30,12 +31,12 @@ class TestStreams(common.TransactionCase):
         })
 
     def _flush_tracking(self):
-        """Трекинг в Odoo 15 отложен до precommit — без flush сообщения нет."""
-        self.env['base'].flush()
-        self.cr.flush()
+        """Трекинг в Odoo 19 отложен до precommit — без него сообщения нет."""
+        self.env.flush_all()
+        self.env.cr.precommit.run()
 
     def _channel_of(self, record):
-        return self.env['mail.channel'].sudo().with_context(
+        return self.env['discuss.channel'].sudo().with_context(
             active_test=False).search([
                 ('channel_kind', '=', 'record'),
                 ('res_model', '=', record._name),
@@ -163,7 +164,12 @@ class TestStreams(common.TransactionCase):
             self.internal_partner, channel.sudo().channel_partner_ids,
             'follower становится участником канала')
 
-        channel.sudo()._action_remove_members(self.internal_partner)
+        # 19: _action_remove_members удалён из ядра — выход из канала это
+        # unlink участника discuss.channel.member
+        self.env['discuss.channel.member'].sudo().search([
+            ('channel_id', '=', channel.id),
+            ('partner_id', '=', self.internal_partner.id),
+        ]).unlink()
         self.assertNotIn(
             self.internal_partner, partner.message_partner_ids,
             'выход из канала снимает follower')
@@ -244,24 +250,28 @@ class TestStreams(common.TransactionCase):
         channel = self._channel_of(partner)
         partner.message_subscribe(partner_ids=self.internal_partner.ids)
 
-        member_channel = channel.with_user(self.internal_user).sudo()
-        member_channel.invalidate_cache()
-        before = member_channel.message_unread_counter
+        # 19: счётчик непрочитанного живёт на участнике канала
+        member = self.env['discuss.channel.member'].sudo().search([
+            ('channel_id', '=', channel.id),
+            ('partner_id', '=', self.internal_partner.id),
+        ], limit=1).with_user(self.internal_user).sudo()
+        member.invalidate_recordset(['message_unread_counter'])
+        before = member.message_unread_counter
 
         partner.message_post(
             body='Second', message_type='comment',
             subtype_xmlid='mail.mt_comment')
-        member_channel.invalidate_cache()
-        after_comment = member_channel.message_unread_counter
+        member.invalidate_recordset(['message_unread_counter'])
+        after_comment = member.message_unread_counter
         self.assertEqual(
             after_comment, before + 1,
             'комментарий инкрементит счётчик непрочитанного')
 
         partner.write({'email': 'unread.changed@example.com'})
         self._flush_tracking()
-        member_channel.invalidate_cache()
+        member.invalidate_recordset(['message_unread_counter'])
         self.assertEqual(
-            member_channel.message_unread_counter, after_comment,
+            member.message_unread_counter, after_comment,
             'изменение полей на счётчик не влияет')
 
     # 12
@@ -292,7 +302,7 @@ class TestStreams(common.TransactionCase):
 
     # 13
     def test_13_blacklisted_models_have_no_channel(self):
-        channel = self.env['mail.channel'].create({
+        channel = self.env['discuss.channel'].create({
             'name': 'Streams Plain Channel',
             'channel_type': 'channel',
         })
@@ -300,10 +310,10 @@ class TestStreams(common.TransactionCase):
             body='Hello channel', message_type='comment',
             subtype_xmlid='mail.mt_comment')
         self.assertFalse(
-            self.env['mail.channel'].sudo().with_context(
+            self.env['discuss.channel'].sudo().with_context(
                 active_test=False).search([
                     ('channel_kind', '=', 'record'),
-                    ('res_model', '=', 'mail.channel'),
+                    ('res_model', '=', 'discuss.channel'),
                 ]),
             'у канала не бывает канала записи')
         self.assertFalse(channel.channel_kind)

@@ -24,7 +24,7 @@ class ResUsers(models.Model):
 
     def write(self, vals):
         result = super().write(vals)
-        if {'notification_type', 'groups_id', 'active'} & set(vals):
+        if {'notification_type', 'group_ids', 'active'} & set(vals):
             self._streams_force_inbox()
         return result
 

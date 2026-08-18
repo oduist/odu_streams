@@ -15,15 +15,16 @@ class TestStreamsChanges(common.TransactionCase):
             'name': 'Streams Changes Tag'})
         cls.country = cls.env.ref('base.pl')
         cls.group_user = cls.env.ref('base.group_user')
+        # 19: groups_id переименовано в group_ids
         cls.watcher = cls.env['res.users'].create({
             'name': 'Streams Watcher',
             'login': 'streams.watcher@example.com',
-            'groups_id': [(6, 0, [cls.group_user.id])],
+            'group_ids': [(6, 0, [cls.group_user.id])],
         })
         cls.other_user = cls.env['res.users'].create({
             'name': 'Streams Other',
             'login': 'streams.other@example.com',
-            'groups_id': [(6, 0, [cls.group_user.id])],
+            'group_ids': [(6, 0, [cls.group_user.id])],
         })
         partner_fields = cls.env['ir.model.fields'].search([
             ('model', '=', 'res.partner'),
@@ -44,16 +45,16 @@ class TestStreamsChanges(common.TransactionCase):
         })
 
     def _flush_tracking(self):
-        """Трекинг в Odoo 15 отложен до precommit — без flush сообщения нет."""
-        self.env['base'].flush()
-        self.cr.flush()
+        """Трекинг в Odoo 19 отложен до precommit — без него сообщения нет."""
+        self.env.flush_all()
+        self.env.cr.precommit.run()
 
     def _subscribe(self, record, user, fields_records):
         return record.with_user(user).streams_set_field_subscription(
             fields_records.ids)
 
     def _changes_channel(self, user, create=False):
-        return self.env['mail.channel']._streams_get_changes_channel(
+        return self.env['discuss.channel']._streams_get_changes_channel(
             user, create=create)
 
     def _feed(self, user, **kwargs):
@@ -61,14 +62,22 @@ class TestStreamsChanges(common.TransactionCase):
         self.assertTrue(channel, 'у подписчика должен быть канал Changes')
         return channel.with_user(user).streams_changes_feed(**kwargs)
 
-    def _unread(self, user):
+    def _member(self, user):
+        """Участник личного канала Changes пользователя."""
         channel = self._changes_channel(user)
-        channel_as_user = channel.with_user(user).sudo()
-        channel_as_user.invalidate_cache()
-        return channel_as_user.message_unread_counter
+        return self.env['discuss.channel.member'].sudo().search([
+            ('channel_id', '=', channel.id),
+            ('partner_id', '=', user.partner_id.id),
+        ], limit=1)
+
+    def _unread(self, user):
+        # 19: счётчик непрочитанного живёт на участнике канала
+        member = self._member(user).with_user(user).sudo()
+        member.invalidate_recordset(['message_unread_counter'])
+        return member.message_unread_counter
 
     def _record_channel(self, record):
-        return self.env['mail.channel'].sudo().with_context(
+        return self.env['discuss.channel'].sudo().with_context(
             active_test=False).search([
                 ('channel_kind', '=', 'record'),
                 ('res_model', '=', record._name),
@@ -222,7 +231,7 @@ class TestStreamsChanges(common.TransactionCase):
         partner = self._make_partner('Changes Author')
         # в этой базе право на правку контакта у group_user урезано
         self.watcher.write({
-            'groups_id': [(4, self.env.ref('base.group_partner_manager').id)]})
+            'group_ids': [(4, self.env.ref('base.group_partner_manager').id)]})
         # правим телефон, а не email: запись email на res.partner в этой базе
         # каскадится в prt.phone, куда обычному пользователю писать нельзя
         self._subscribe(partner, self.watcher, self.field_phone)
@@ -280,7 +289,11 @@ class TestStreamsChanges(common.TransactionCase):
             'счётчик личного канала считает записи, а не изменения')
 
         channel = self._changes_channel(self.watcher)
-        channel.with_user(self.watcher)._channel_seen()
+        # 19: _channel_seen() удалён — прочтение это member._mark_as_read()
+        last_message = self.env['mail.message'].sudo().search(
+            channel._streams_message_domain(), order='id DESC', limit=1)
+        self._member(self.watcher).with_user(
+            self.watcher)._mark_as_read(last_message.id)
         self.assertEqual(
             self._unread(self.watcher), 0, 'просмотр обнуляет счётчик')
 
@@ -319,7 +332,7 @@ class TestStreamsChanges(common.TransactionCase):
             'domain_force': "[('id', '!=', %s)]" % partner.id,
             'groups': [(6, 0, [])],
         })
-        self.env['res.partner'].invalidate_cache()
+        self.env['res.partner'].invalidate_model()
 
         self.assertFalse(
             self._feed(self.watcher),
@@ -334,7 +347,7 @@ class TestStreamsChanges(common.TransactionCase):
                 [('stream_channel_ids', 'in', channel.ids)]))
 
         rule.unlink()
-        self.env['res.partner'].invalidate_cache()
+        self.env['res.partner'].invalidate_model()
         self.assertEqual(len(self._feed(self.watcher)), 1)
 
     # 9

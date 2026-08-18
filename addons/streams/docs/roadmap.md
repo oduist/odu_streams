@@ -930,6 +930,70 @@ email.document, ksef.invoice, connect_messagebox.message и др.).
    протекал в `search` — гость видел отозванные доступы. Найдено живым
    прогоном, закрыто тестом.
 
+### Фаза 5 — порт на Odoo 19 (2026-08-18, коммиты d81158c..HEAD)
+
+Реализует смену целевой платформы (решение пользователя 2026-08-18).
+Дизайн-контракт — `docs/design-phase5.md`, рабочие правила замен —
+`docs/design-phase5-notes.md`. Модуль `streams` 19.0.1.4.0 (паритет
+функциональности с 15.0.1.4.0). Все 70 тестов зелёные на чистой базе 19
+(Oduflow `streams19`).
+
+**Ключевые замены:**
+- `mail.channel`/`mail.channel.partner` → `discuss.channel`/`discuss.channel.member`;
+  частичные UNIQUE-индексы — декларативными `models.UniqueIndex`.
+- Проекции сохранены (m2m `stream_channel_ids`); форки переехали в новые
+  точки ядра: лента — `mail.message._message_fetch` (thread → домен
+  проекций), unread — `discuss.channel.member._compute_message_unread`
+  (ветки record/changes/notifications), прочтение — `member._mark_as_read`,
+  превью — `_get_last_messages`.
+- Клиентский формат — Store: `_to_store_defaults` на канале
+  (`channel_kind`, `res_model`, `res_id`, `streams_filters`) и сообщении
+  (`streams_kind`, `stream_channel_ids`); `_init_messaging(store)` отдаёт
+  `streams_notify` через `add_global_values`.
+- Шина: `_sendmany`/`bus_actions` → `_bus_send`; проекции —
+  `discuss.channel/new_message` с персональным Store-payload адресно
+  партнёрам (ACL сохранён); правки/реакции гостя — `mail.record/insert`.
+- Подтип Change проставляется в `mail.message.create`
+  (`_streams_normalize_tracking_vals`) — общая точка обоих путей трекинга
+  19 (в 15 был override `_message_log`, который в 19 не принимает подтип).
+- Автоподписка: гасится `mail_post_autofollow=False` +
+  `mail_post_autofollow_author_skip=True`; запрет писем внутренним —
+  `_notify_thread_by_email` (вместо `_notify_record_by_email`).
+- Гостевая подсистема as-is: `type='jsonrpc'`, `ir.binary` вместо
+  `_get_content_common`, `_message_update_content` вместо
+  `_update_content`, `request.update_context` (сеттер `request.context`
+  в 19 бросает исключение). Нативный `mail.guest` отвергнут осознанно
+  (постоянные ссылки и членство в канале ломают инварианты §9/§5.3).
+- Зависимости: `mailgun`, `mail_extra_recipients`, `bus_actions` удалены
+  (исходники приватного addons_veles недоступны, функциональность
+  поглощена/не нужна); `queue_job` — OCA 19.0 (extra-repo, python-dep
+  `openupgradelib` в `.oduflow/requirements.txt`).
+- Удалены как покрытые ядром 19: `mail_compose_message.py`
+  (`default_subtype_xmlid` понимает ядро), `mail_wizard_invite.py`
+  (модели нет, новый `mail.followers.edit` проходит через наш фильтр
+  внутренних в `message_subscribe`), контроллер `/mail/channel/messages`
+  (форк домена живёт в `_message_fetch`), override `add_members`
+  (ядро 19 не постит joined/left в каналах типа `channel`), форк
+  «change не влияет на unread» для ядрового счётчика (notification-типы
+  ядро само не считает).
+- `res.users`: дефолт `notification_type='inbox'` снят — в 19 CHECK
+  «share ≠ inbox» ронял создание портальных пользователей; перевод на
+  inbox делает `_streams_force_inbox` после create/write (+фикс триггера
+  `groups_id` → `group_ids`).
+- Веб-клиент Odoo 15 перенесён в `static/legacy15/` (референс), ассетов
+  у модуля нет; гостевая страница (`static/src/guest/`) работает as-is.
+
+**Отступления фазы 5 (зафиксированы):**
+1. `streams_notify_open_channel` возвращает
+   `{'channel_id': id, 'data': <Store>}` вместо `channel_info()[0]`.
+2. Правка сообщения гостем дописывает ядровый маркер
+   `o-mail-Message-edited` в тело (косметика, на гостевой странице
+   не рендерится).
+3. Тестовый catchall настраивается через `mail.alias.domain` компании
+   (ir.config_parameter-путь в 19 мёртв).
+4. В матрицу классификатора добавлен `message_type='email_outgoing'`
+   (новый тип исходящих в 19) — относится к потоку `message`.
+
 ## To check / to do
 
 - [ ] **Merge каналов при слиянии записей** (`message_change_thread` →
@@ -1042,3 +1106,15 @@ email.document, ksef.invoice, connect_messagebox.message и др.).
 - [x] Канал Changes перенесён из собственной категории сайдбара в ядровую
   Channels, рядом с Notifications (решение пользователя 2026-08-18); поле
   is_discuss_sidebar_category_changes_open удалено.
+- [ ] **Веб-UI на 19 (OWL 2 + Store)** — отдельная фаза после
+  `streams_mobile`: фильтры потоков, Notify-попапы/композер/systray,
+  лента Changes, кнопки чаттера/канала. Легаси-код — в `static/legacy15/`.
+- [ ] **Миграция данных 15 → 19** (живая база VelesAgro): переименование
+  таблиц `mail_channel*`, перенос rel-таблицы, индексов и xml-id; порт
+  сделан для чистой установки.
+- [ ] Удаление/переустановка модуля streams на 19 не прогонялись.
+- [ ] Гостевая страница на 19 живьём (браузером) не прогонялась —
+  контроллеры и модельные гейты покрыты юнит-тестами.
+- [ ] Store-ключи `streams_filters`/`streams_kind`/`stream_channel_ids`
+  зафиксированы тестами, но потребителей (веб-клиент) пока нет — сверить
+  при OWL-фазе.

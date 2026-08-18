@@ -1,7 +1,7 @@
 # -*- encoding: utf-8 -*-
 import logging
 
-from odoo import models, fields, api
+from odoo import models, api
 
 _logger = logging.getLogger(__name__)
 
@@ -14,7 +14,11 @@ class ResUsers(models.Model):
     """
     _inherit = 'res.users'
 
-    notification_type = fields.Selection(default='inbox')
+    # Дефолт поля notification_type НЕ переопределяется: в 19 на res_users
+    # есть CHECK-констрейнт «share-пользователь не может быть inbox», и
+    # общий дефолт inbox ронял бы создание портальных пользователей ещё до
+    # нашей пост-обработки. Внутренних на inbox переводит
+    # _streams_force_inbox после create/write.
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -46,9 +50,6 @@ class ResUsers(models.Model):
     def _streams_force_inbox(self):
         """Удержать внутренних на inbox, а внешних (share) — на email.
 
-        Дефолт поля — inbox, поэтому портального пользователя без правки
-        он оставил бы с уведомлениями, которых тот никогда не увидит:
-        share-пользователь в inbox не ходит, ему нужен email.
         Пишем через super(), чтобы не уйти в рекурсию собственного write.
         """
         internal = self.sudo().filtered(

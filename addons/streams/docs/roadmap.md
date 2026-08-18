@@ -994,6 +994,42 @@ email.document, ksef.invoice, connect_messagebox.message и др.).
 4. В матрицу классификатора добавлен `message_type='email_outgoing'`
    (новый тип исходящих в 19) — относится к потоку `message`.
 
+### Фаза 6 — streams_mobile: серверный API мобильного клиента (2026-08-18)
+
+Реализует адаптированное к Odoo 19 ТЗ мобильного клиента
+(gist Buburuzac/56eb12c32e0f0fc251f010065409c928): дизайн —
+`docs/design-phase6.md`, контракт API — `streams_mobile/docs/api-v1.md`.
+Модуль `streams_mobile` 19.0.1.0.0 (`depends: streams`). Все 27 тестов
+зелёные; полный прогон streams+streams_mobile — 97 зелёных.
+
+- **Токен-аутентификация**: `streams.mobile.device` (в БД только sha256
+  секрета), login (`res.users._login` + TOTP через
+  `_check_credentials({'type':'totp'})`), logout, отзыв устройств, ir.rule
+  «только свои», инвалидация всех токенов при смене пароля.
+- **API v1** (`/streams/mobile/v1`, jsonrpc/POST, Bearer): init, channels,
+  channel/messages|post|mark_read|filters, changes/feed,
+  fields/subscription, notify/*, poll (выборка bus.bus своего партнёра —
+  замена longpolling, которого в 19 нет), attachment upload/download
+  (pending-паттерн + ir.binary). Бизнес-операции — правами пользователя,
+  без sudo.
+- **Пуши**: очередь `streams.mobile.push` + queue_job + cron-страховка;
+  политика по потокам (comment/message — участникам кроме автора, note —
+  только упомянутым, change/activity — никогда, Notify — всегда) с той же
+  ACL-фильтрацией, что у шины. Транспорт FCM — заглушка до появления
+  ключей Firebase (`streams_mobile.fcm_service_account_json`).
+
+**Отступления/находки фазы 6:**
+1. В 19 `mail.message._check_access('create')` требует write-доступ к
+   записи-источнику ЛИБО членства в followers — участник канала (=follower)
+   постит свободно, «просто читатель» — нет (это жёстче 15 на бумаге, но
+   фактическая семантика та же).
+2. Ядровый `create` ставит discard-маркер трекинга на созданную запись:
+   write в той же транзакции без промежуточного precommit не даёт
+   change-сообщения (в тестах нужен flush после создания фикстур).
+3. `/v1/channels` отдаёт плоский список с `kind` (секции собирает клиент);
+   `pending_popups` в init называется `pending` (payload
+   `_streams_init_messaging` as-is).
+
 ## To check / to do
 
 - [ ] **Merge каналов при слиянии записей** (`message_change_thread` →

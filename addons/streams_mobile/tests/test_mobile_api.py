@@ -32,12 +32,21 @@ class TestMobileApiFormat(common.TransactionCase):
         cls.user = cls.env['res.users'].create({
             'name': 'Mobile Format User',
             'login': 'mobile.format@example.com',
-            'group_ids': [(6, 0, [cls.env.ref('base.group_user').id])],
+            'group_ids': [(6, 0, [
+                cls.env.ref('base.group_user').id,
+                # 19: mail.message._check_access('create') требует write-доступ
+                # к записи-источнику (или followers) — как в тестах streams
+                cls.env.ref('base.group_partner_manager').id,
+            ])],
         })
         cls.record = cls.env['res.partner'].create({
             'name': 'Mobile Format Record',
             'email': 'format.record@example.com',
         })
+        # 19: create ставит discard-маркер трекинга в precommit — без этого
+        # write в том же курсоре не даст change-сообщения
+        cls.env.flush_all()
+        cls.env.cr.precommit.run()
 
     def _flush_tracking(self):
         """Трекинг в 19 отложен до precommit — без него сообщения нет."""

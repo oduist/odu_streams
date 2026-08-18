@@ -24,21 +24,24 @@ class TestMobilePush(common.TransactionCase):
     def setUpClass(cls):
         super().setUpClass()
         group_user = cls.env.ref('base.group_user')
+        # 19: mail.message._check_access('create') требует write-доступ к
+        # записи-источнику (или followers) — как в тестах streams
+        group_partner = cls.env.ref('base.group_partner_manager')
         cls.author = cls.env['res.users'].create({
             'name': 'Streams Push Author',
             'login': 'streams.push.author@example.com',
-            'group_ids': [(6, 0, [group_user.id])],
+            'group_ids': [(6, 0, [group_user.id, group_partner.id])],
         })
         cls.member = cls.env['res.users'].create({
             'name': 'Streams Push Member',
             'login': 'streams.push.member@example.com',
-            'group_ids': [(6, 0, [group_user.id])],
+            'group_ids': [(6, 0, [group_user.id, group_partner.id])],
         })
         # третий внутренний: чтение записи у него отберёт ir.rule (тест 4)
         cls.outsider = cls.env['res.users'].create({
             'name': 'Streams Push Outsider',
             'login': 'streams.push.outsider@example.com',
-            'group_ids': [(6, 0, [group_user.id])],
+            'group_ids': [(6, 0, [group_user.id, group_partner.id])],
         })
         device_model = cls.env['streams.mobile.device']
         cls.author_device, cls.author_token = device_model._streams_issue(
@@ -62,10 +65,14 @@ class TestMobilePush(common.TransactionCase):
         self.env.cr.precommit.run()
 
     def _make_record(self, name):
-        return self.env['res.partner'].create({
+        record = self.env['res.partner'].create({
             'name': name,
             'email': '%s@example.com' % name.lower().replace(' ', '.'),
         })
+        # 19: create ставит discard-маркер трекинга — сбрасываем, чтобы
+        # последующие write в тестах давали change-сообщения честно
+        self._flush_tracking()
+        return record
 
     def _post(self, record, user, body, subtype='mail.mt_comment', **kwargs):
         return record.with_user(user).message_post(

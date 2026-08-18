@@ -5,9 +5,11 @@ from odoo import models, fields
 class ResUsersSettings(models.Model):
     """Состояние категории «Messages» в сайдбаре Discuss (§11.3).
 
-    Ядро отдаёт все неавтоматические поля этой модели в `init_messaging`
-    (`_res_users_settings_format`), поэтому клиенту достаточно объявить
-    поле здесь — отдельная выдача не нужна.
+    В 19 модель живёт в base, но сериализация не поменялась: ядро отдаёт
+    все неавтоматические поля целиком через `_res_users_settings_format`
+    (web кладёт их в session_info, mail — в Store при `_init_store_data`,
+    точечные правки едут через `set_res_users_settings`). Поэтому клиенту
+    достаточно объявить поле здесь — отдельная выдача не нужна.
     """
     _inherit = 'res.users.settings'
 

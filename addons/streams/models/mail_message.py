@@ -2,7 +2,8 @@
 import logging
 
 from odoo import models, fields, api
-from odoo.osv import expression
+from odoo.addons.mail.tools.discuss import Store
+from odoo.fields import Domain
 
 _logger = logging.getLogger(__name__)
 
@@ -43,15 +44,34 @@ class MailMessage(models.Model):
     _inherit = 'mail.message'
 
     stream_channel_ids = fields.Many2many(
-        'mail.channel', STREAM_REL_TABLE, 'message_id', 'channel_id',
+        'discuss.channel', STREAM_REL_TABLE, 'message_id', 'channel_id',
         string='Stream Channels', copy=False)
 
     @api.model_create_multi
     def create(self, values_list):
+        self._streams_normalize_tracking_vals(values_list)
         messages = super().create(values_list)
         messages._streams_link_existing_channels()
         messages._streams_route_field_subscriptions()
         return messages
+
+    @api.model
+    def _streams_normalize_tracking_vals(self, values_list):
+        """Схлопнутое сообщение трекинга получает подтип Change (§4.1, §8.2).
+
+        В 15 эту роль выполнял override `_message_log`; в 19 у
+        `_message_log_batch` подтип зашит (`mail.mt_note`), а модели с
+        собственным `_track_subtype` постят изменение через `message_post`.
+        `mail.message.create` — общая точка обоих путей: любое
+        notification-сообщение с tracking-значениями и есть изменение.
+        """
+        change_id = self._streams_subtype_ids().get(STREAM_CHANGE)
+        if not change_id:
+            return
+        for values in values_list:
+            if values.get('tracking_value_ids') \
+                    and values.get('message_type') == 'notification':
+                values['subtype_id'] = change_id
 
     # ------------------------------------------------------------
     # КЛАССИФИКАЦИЯ
@@ -86,15 +106,15 @@ class MailMessage(models.Model):
 
         * `user_notification` — адресное служебное уведомление, к потокам
           записи отношения не имеет;
-        * входящее/исходящее письмо (`message_type='email'`) — всегда
-          внешняя переписка, даже если подтип у него comment;
+        * входящее/исходящее письмо — всегда внешняя переписка, даже если
+          подтип у него comment (в 19 у исходящих тип `email_outgoing`);
         * `message_type='notification'` без нашего подтипа — системный
           автолог (создание записи, падение job, приглашение в канал):
           это «прочее», канал по нему не заводится.
         """
         if message_type == 'user_notification':
             return False
-        if message_type == 'email':
+        if message_type in ('email', 'email_outgoing'):
             return STREAM_MESSAGE
         subtypes = self._streams_subtype_ids()
         if subtype_id:
@@ -135,28 +155,27 @@ class MailMessage(models.Model):
         subtypes = self._streams_subtype_ids()
         comment_id = subtypes.get(STREAM_COMMENT) or 0
         message_id = subtypes.get(STREAM_MESSAGE) or 0
-        return expression.AND([
-            [
-                ('stream_channel_ids', 'in', participant.sudo().channel_id.ids),
-                ('date', '>=', participant.sudo().history_from),
-            ],
-            expression.OR([
+        return (
+            Domain('stream_channel_ids', 'in',
+                   participant.sudo().channel_id.ids)
+            & Domain('date', '>=', participant.sudo().history_from)
+            & (
                 # входящее/исходящее письмо — всегда внешняя переписка
-                [('message_type', '=', 'email')],
-                expression.AND([
-                    [('message_type', '!=', 'user_notification')],
-                    expression.OR([
-                        [('subtype_id', '=', message_id)],
-                        expression.AND([
+                Domain('message_type', 'in', ('email', 'email_outgoing'))
+                | (
+                    Domain('message_type', '!=', 'user_notification')
+                    & (
+                        Domain('subtype_id', '=', message_id)
+                        | (
                             # notification без наших подтипов — «прочее»
                             # (в том числе якорь треда): гостю не видно
-                            [('message_type', '!=', 'notification')],
-                            [('subtype_id', '=', comment_id)],
-                        ]),
-                    ]),
-                ]),
-            ]),
-        ])
+                            Domain('message_type', '!=', 'notification')
+                            & Domain('subtype_id', '=', comment_id)
+                        )
+                    )
+                )
+            )
+        )
 
     # ------------------------------------------------------------
     # ПРИВЯЗКА К КАНАЛАМ
@@ -174,20 +193,20 @@ class MailMessage(models.Model):
         for message in self:
             if not message.model or not message.res_id:
                 continue
-            if message.model == 'mail.channel':
+            if message.model == 'discuss.channel':
                 continue
             if message.message_type == 'user_notification':
                 continue
             targets.setdefault(message.model, set()).add(message.res_id)
         if not targets:
             return
-        domain = expression.OR([
-            ['&', ('res_model', '=', res_model), ('res_id', 'in', list(ids))]
+        domain = Domain.OR([
+            Domain('res_model', '=', res_model) & Domain('res_id', 'in', list(ids))
             for res_model, ids in targets.items()
         ])
-        channels = self.env['mail.channel'].sudo().with_context(
-            active_test=False).search(expression.AND([
-                [('channel_kind', '=', 'record')], domain]))
+        channels = self.env['discuss.channel'].sudo().with_context(
+            active_test=False).search(
+                Domain('channel_kind', '=', 'record') & domain)
         if not channels:
             return
         channel_by_target = {
@@ -200,9 +219,8 @@ class MailMessage(models.Model):
             if channel_id:
                 pairs.append((message.id, channel_id))
         if pairs:
-            self.env['mail.channel']._streams_insert_links(pairs)
-            self.invalidate_cache(
-                fnames=['stream_channel_ids'], ids=self.ids)
+            self.env['discuss.channel']._streams_insert_links(pairs)
+            self.invalidate_recordset(fnames=['stream_channel_ids'])
 
     # ------------------------------------------------------------
     # МАРШРУТИЗАЦИЯ ИЗМЕНЕНИЙ В ЛИЧНЫЕ КАНАЛЫ (§8.2)
@@ -219,7 +237,7 @@ class MailMessage(models.Model):
         """
         candidates = self.sudo().filtered(
             lambda message: message.model and message.res_id
-            and message.model != 'mail.channel'
+            and message.model != 'discuss.channel'
             and message.message_type != 'user_notification'
             and message.tracking_value_ids)
         if not candidates:
@@ -236,14 +254,14 @@ class MailMessage(models.Model):
             by_target.setdefault(
                 (subscription.res_model, subscription.res_id), []
             ).append(subscription)
-        channel_model = self.env['mail.channel']
+        channel_model = self.env['discuss.channel']
         channel_by_user = {}
         pairs = []
         for message in candidates:
             matched = by_target.get((message.model, message.res_id))
             if not matched:
                 continue
-            changed_field_ids = set(message.tracking_value_ids.field.ids)
+            changed_field_ids = set(message.tracking_value_ids.field_id.ids)
             if not changed_field_ids:
                 continue
             for subscription in matched:
@@ -260,7 +278,7 @@ class MailMessage(models.Model):
         if not pairs:
             return
         channel_model._streams_insert_links(pairs)
-        self.invalidate_cache(fnames=['stream_channel_ids'], ids=self.ids)
+        self.invalidate_recordset(fnames=['stream_channel_ids'])
         self._streams_notify_changes_channels(set(
             channel_id for _message_id, channel_id in pairs))
 
@@ -275,27 +293,48 @@ class MailMessage(models.Model):
         """
         if not channel_ids:
             return
-        channels = self.env['mail.channel'].sudo().browse(list(channel_ids))
-        notifications = [
-            (channel.owner_user_id.partner_id, 'streams.changes/updated',
-             {'id': channel.id})
-            for channel in channels
-            if channel.owner_user_id and channel.owner_user_id.partner_id
-        ]
-        if notifications:
-            self.env['bus.bus'].sudo()._sendmany(notifications)
+        channels = self.env['discuss.channel'].sudo().browse(list(channel_ids))
+        for channel in channels:
+            partner = channel.owner_user_id.partner_id
+            if partner:
+                partner._bus_send('streams.changes/updated', {'id': channel.id})
+
+    # ------------------------------------------------------------
+    # ЛЕНТА КАНАЛА С ПРОЕКЦИЯМИ
+    # ------------------------------------------------------------
+
+    def _message_fetch(self, domain, *, thread=None, search_term=None,
+                       is_notification=None, before=None, after=None,
+                       around=None, limit=30):
+        """Лента канала записи — собственные сообщения плюс проекции.
+
+        Ядровый fetch жёстко зашивает `model/res_id` треда; для наших
+        каналов тред разворачивается в домен проекций, дальше работает
+        ядровая пагинация.
+        """
+        if thread is not None and thread._name == 'discuss.channel' \
+                and len(thread) == 1 and thread.channel_kind:
+            projection = thread._streams_message_domain() \
+                & Domain('message_type', '!=', 'user_notification')
+            domain = projection if domain is None \
+                else Domain(domain) & projection
+            thread = None
+        return super()._message_fetch(
+            domain, thread=thread, search_term=search_term,
+            is_notification=is_notification, before=before, after=after,
+            around=around, limit=limit)
 
     # ------------------------------------------------------------
     # ФОРМАТ ДЛЯ КЛИЕНТА
     # ------------------------------------------------------------
 
-    def _message_format(self, fnames, format_reply=True):
-        """Заготовка для клиента фазы 1b: каналы сообщения и его поток."""
-        values_list = super()._message_format(
-            fnames, format_reply=format_reply)
-        for values in values_list:
-            message_sudo = self.browse(values['id']).sudo().with_prefetch(
-                self.ids)
-            values['stream_channel_ids'] = message_sudo.stream_channel_ids.ids
-            values['streams_kind'] = message_sudo._streams_classify()
-        return values_list
+    def _to_store_defaults(self, target):
+        """Клиенту нужны каналы сообщения и его поток."""
+        return super()._to_store_defaults(target) + [
+            Store.Attr(
+                'stream_channel_ids',
+                value=lambda message: message.sudo().stream_channel_ids.ids),
+            Store.Attr(
+                'streams_kind',
+                value=lambda message: message.sudo()._streams_classify()),
+        ]

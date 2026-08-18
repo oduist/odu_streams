@@ -32,7 +32,7 @@ class StreamsGuestController(http.Controller):
 
     Свои маршруты, а не ядровые `/mail/*` (Р2): ядро пускает анонима
     исключительно как `mail.guest` и исключительно к сообщениям с
-    `model='mail.channel'`, а наши сообщения лежат на записи.
+    `model='discuss.channel'`, а наши сообщения лежат на записи.
     """
 
     # ------------------------------------------------------------
@@ -48,9 +48,13 @@ class StreamsGuestController(http.Controller):
         return participant or None
 
     def _streams_set_lang(self, participant):
-        """Страница рендерится на языке контакта (Р5)."""
+        """Страница рендерится на языке контакта (Р5).
+
+        В 19 `request.context` стал read-only — контекст меняется только
+        через `request.update_context`.
+        """
         lang = participant.sudo().partner_id.lang or 'en_US'
-        request.context = dict(request.context, lang=lang)
+        request.update_context(lang=lang)
 
     def _streams_set_cookie(self, response, participant):
         request_secure = request.httprequest.is_secure
@@ -203,7 +207,7 @@ class StreamsGuestController(http.Controller):
     def streams_guest_enter(self, token, **kwargs):
         """Осознанный вход: ссылка обменивается на сессию (§9.3).
 
-        CSRF проверяет ядро (`http.py:785-819`); кука `session_id`
+        CSRF проверяет ядро (`http.py:2492-2503`); кука `session_id`
         поставлена на GET-ответе, поэтому `save_session=False` здесь
         ставить нельзя — иначе токен CSRF перестанет сходиться.
         """
@@ -237,7 +241,7 @@ class StreamsGuestController(http.Controller):
     # ЛЕНТА
     # ------------------------------------------------------------
 
-    @http.route('/streams/guest/feed', type='json', auth='public',
+    @http.route('/streams/guest/feed', type='jsonrpc', auth='public',
                 methods=['POST'])
     def streams_guest_feed(self, after_id=None, before_id=None,
                            limit=FEED_LIMIT, **kwargs):
@@ -256,7 +260,7 @@ class StreamsGuestController(http.Controller):
     # ОТПРАВКА, ПРАВКА, УДАЛЕНИЕ
     # ------------------------------------------------------------
 
-    @http.route('/streams/guest/post', type='json', auth='public',
+    @http.route('/streams/guest/post', type='jsonrpc', auth='public',
                 methods=['POST'])
     def streams_guest_post(self, body='', attachment_ids=None, **kwargs):
         """Сообщение гостя ложится на саму запись (§9.4, А5)."""
@@ -289,7 +293,7 @@ class StreamsGuestController(http.Controller):
             lambda attachment: attachment.res_model == 'mail.compose.message'
             and attachment.res_id == participant.id).ids
 
-    @http.route('/streams/guest/update', type='json', auth='public',
+    @http.route('/streams/guest/update', type='jsonrpc', auth='public',
                 methods=['POST'])
     def streams_guest_update(self, message_id=None, body='', **kwargs):
         """Правка своего сообщения в окне (§9.4)."""
@@ -302,7 +306,7 @@ class StreamsGuestController(http.Controller):
             return {'error': error}
         return {'ok': True}
 
-    @http.route('/streams/guest/delete', type='json', auth='public',
+    @http.route('/streams/guest/delete', type='jsonrpc', auth='public',
                 methods=['POST'])
     def streams_guest_delete(self, message_id=None, **kwargs):
         """Удаление гостем = сообщение становится заметкой (решение 4).
@@ -326,7 +330,7 @@ class StreamsGuestController(http.Controller):
     # РЕАКЦИИ
     # ------------------------------------------------------------
 
-    @http.route('/streams/guest/reaction', type='json', auth='public',
+    @http.route('/streams/guest/reaction', type='jsonrpc', auth='public',
                 methods=['POST'])
     def streams_guest_reaction(self, message_id=None, content=None,
                                action='add', **kwargs):
@@ -365,13 +369,14 @@ class StreamsGuestController(http.Controller):
         attachment = request.env['ir.attachment'].sudo().create({
             'name': name,
             'raw': data,
-            # как ядро (`discuss.py:249-255`): вложение висит в pending, а
-            # `message_post` перепривяжет его к записи. Все гости работают
-            # под одним публичным uid, поэтому владелец pending-вложения
-            # помечается id участника в res_id — иначе гость А мог бы
-            # прикрепить к своему сообщению свежую загрузку гостя Б.
-            # Ядровая перепривязка проверяет только res_model и create_uid
-            # (mail_thread.py:1731-1734), маркеру не мешает.
+            # как ядро (`mail/controllers/attachment.py:49-80`): вложение
+            # висит в pending, а `message_post` перепривяжет его к записи.
+            # Все гости работают под одним публичным uid, поэтому владелец
+            # pending-вложения помечается id участника в res_id — иначе
+            # гость А мог бы прикрепить к своему сообщению свежую загрузку
+            # гостя Б. Ядровая перепривязка (`_process_attachments_for_post`,
+            # mail_thread.py:2429-2436) проверяет только res_model и
+            # create_uid, маркеру не мешает.
             'res_model': 'mail.compose.message',
             'res_id': participant.id,
         })
@@ -384,17 +389,18 @@ class StreamsGuestController(http.Controller):
         })
 
     def _streams_json_response(self, payload, status=200):
-        """`make_response` кода ответа не принимает — ставим его отдельно."""
-        response = request.make_response(
-            json.dumps(payload),
-            headers=[('Content-Type', 'application/json')])
-        response.status_code = status
-        return response
+        """JSON-ответ http-роута; в 19 хелпер принимает и код ответа."""
+        return request.make_json_response(payload, status=status)
 
     @http.route('/streams/guest/attachment/<int:attachment_id>', type='http',
                 auth='public', methods=['GET'], website=False, sitemap=False)
     def streams_guest_attachment(self, attachment_id, download=None, **kwargs):
-        """Вложение отдаётся только с видимого гостю сообщения (Р9)."""
+        """Вложение отдаётся только с видимого гостю сообщения (Р9).
+
+        В 19 отдача файлов живёт в сервисе `ir.binary`; sudo на самом
+        вложении обязателен — права уже проверены нашим доменом видимости,
+        а публичный пользователь ir.attachment читать не может.
+        """
         participant = self._streams_participant()
         if not participant:
             raise NotFound()
@@ -404,5 +410,9 @@ class StreamsGuestController(http.Controller):
                 'streams: гость %s запросил недоступное вложение %s',
                 participant.id, attachment_id)
             raise NotFound()
-        return request.env['ir.http'].sudo()._get_content_common(
-            res_id=attachment_id, download=download)
+        attachment = request.env['ir.attachment'].sudo().browse(
+            attachment_id).exists()
+        if not attachment:
+            raise NotFound()
+        stream = request.env['ir.binary']._get_stream_from(attachment)
+        return stream.get_response(as_attachment=bool(download))

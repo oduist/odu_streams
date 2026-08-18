@@ -5,6 +5,7 @@ from datetime import timedelta
 import requests
 
 from odoo import models, fields, api, tools, _
+from odoo.addons.mail.tools.discuss import Store
 from odoo.exceptions import AccessError, UserError, ValidationError
 
 _logger = logging.getLogger(__name__)
@@ -47,7 +48,8 @@ PENDING_POPUP_DAYS = 7
 # Задание транскрипции, зависшее дольше этого, переставляется кроном (А8)
 TRANSCRIPT_STUCK_MINUTES = 10
 
-# Типы шины. `notify` занят самим bus_actions — свои типы с префиксом.
+# Типы шины. Доставка в 19 — `partner._bus_send(type, payload)`; префикс
+# `streams.` отделяет наши типы от ядровых (`mail.record/insert` и т.п.).
 BUS_NEW = 'streams.notify/new'
 BUS_UPDATE = 'streams.notify/update'
 BUS_COUNTER = 'streams.notify/counter'
@@ -103,11 +105,7 @@ class MailNotify(models.Model):
     recipient_ids = fields.One2many(
         'mail.notify.recipient', 'notify_id', string='Recipients')
 
-    def init(self):
-        super().init()
-        tools.create_index(
-            self._cr, 'mail_notify_streams_record_idx', self._table,
-            ['res_model', 'res_id'])
+    _streams_record_idx = models.Index("(res_model, res_id)")
 
     # ------------------------------------------------------------
     # НАСТРОЙКИ (§14)
@@ -211,9 +209,12 @@ class MailNotify(models.Model):
     def _streams_bind_attachments(self, attachment_ids):
         """Перепривязать pending-вложения композера на уведомление.
 
-        Копия ядрового приёма (`mail.thread._message_post_process_attachments`):
-        вложение заливается до создания записи как `mail.compose.message`
-        с `res_id=0` и доступно только своему создателю.
+        Копия ядрового приёма (в 19 — `mail.thread
+        ._process_attachments_for_post`): `/mail/attachment/upload` с
+        `is_pending` по-прежнему заливает вложение до создания записи как
+        `mail.compose.message` с `res_id=0`, и оно доступно только своему
+        создателю. Ядровый фильтр принимает ещё `mail.scheduled.message`,
+        но к нашему композеру этот путь отношения не имеет.
         """
         self.ensure_one()
         if not attachment_ids:
@@ -245,8 +246,7 @@ class MailNotify(models.Model):
         if not parent:
             raise UserError(_("The notification you reply to no longer exists."))
         # право на чтение родителя = я его автор или получатель (ir.rule)
-        parent.check_access_rights('read')
-        parent.check_access_rule('read')
+        parent.check_access('read')
         vals = dict(vals or {})
         vals['user_ids'] = [parent.author_id.id]
         vals.setdefault('is_sticky', parent.is_sticky)
@@ -322,7 +322,7 @@ class MailNotify(models.Model):
     def _streams_prepare_channels(self, users):
         """Личные каналы Notifications автора и получателей (§12.5)."""
         self.ensure_one()
-        channel_model = self.env['mail.channel']
+        channel_model = self.env['discuss.channel']
         for user in (self.author_id | users):
             channel_model._streams_get_notifications_channel(user)
 
@@ -442,16 +442,15 @@ class MailNotify(models.Model):
         counter = self._streams_notify_counter()
         for row in rows:
             notify = row.sudo().notify_id
-            self.env['bus.actions'].signal(BUS_UPDATE, {
+            notify.author_id.partner_id._bus_send(BUS_UPDATE, {
                 'id': notify.id,
                 'recipient': {
                     'user_id': row.user_id.id,
                     'name': row.user_id.display_name or '',
                     'read_date': fields.Datetime.to_string(row.read_date),
                 },
-            }, user=notify.author_id)
-        self.env['bus.actions'].signal(
-            BUS_COUNTER, {'counter': counter}, user=self.env.user)
+            })
+        self.env.user.partner_id._bus_send(BUS_COUNTER, {'counter': counter})
         return {'counter': counter}
 
     @api.model
@@ -471,11 +470,19 @@ class MailNotify(models.Model):
 
     @api.model
     def streams_notify_open_channel(self):
-        """Личный канал Notifications, создавая его при первом заходе."""
-        channel = self.env['mail.channel']._streams_get_notifications_channel()
+        """Личный канал Notifications, создавая его при первом заходе.
+
+        В 15 возвращался `channel_info()[0]`; в 19 формат клиента — Store,
+        поэтому контракт: id канала плюс Store-payload его данных.
+        """
+        channel = self.env[
+            'discuss.channel']._streams_get_notifications_channel()
         if not channel:
             return False
-        return channel.channel_info()[0]
+        return {
+            'channel_id': channel.id,
+            'data': Store().add(channel).get_result(),
+        }
 
     # ------------------------------------------------------------
     # СТАРТ КЛИЕНТА (А9)
@@ -484,8 +491,8 @@ class MailNotify(models.Model):
     @api.model
     def _streams_init_messaging(self):
         """Счётчик, канал и накопившиеся попапы одним куском payload'а."""
-        channel = self.env['mail.channel']._streams_get_notifications_channel(
-            create=False)
+        channel = self.env[
+            'discuss.channel']._streams_get_notifications_channel(create=False)
         limit_date = fields.Datetime.now() - timedelta(days=PENDING_POPUP_DAYS)
         rows = self.env['mail.notify.recipient'].search([
             ('user_id', '=', self.env.uid),
@@ -508,22 +515,24 @@ class MailNotify(models.Model):
     # ------------------------------------------------------------
 
     def _streams_broadcast_new(self):
-        """Разослать новое уведомление получателям (§12.4)."""
+        """Разослать новое уведомление получателям (§12.4).
+
+        Адресно, каждому на его партнёрский bus-канал; батчинг отправок
+        в 19 делает precommit самой шины.
+        """
         self.ensure_one()
-        bus_actions = self.env['bus.actions']
         for row in self.sudo().recipient_ids:
             payload = self._streams_payload(recipient=row)
             payload['counter'] = self._streams_notify_counter(row.user_id)
-            bus_actions.signal(BUS_NEW, payload, user=row.user_id)
+            row.user_id.partner_id._bus_send(BUS_NEW, payload)
 
     def _streams_broadcast_update(self, patch):
         """Точечное обновление уведомления у автора и получателей."""
         self.ensure_one()
-        bus_actions = self.env['bus.actions']
         notify = self.sudo()
         users = notify.author_id | notify.recipient_ids.mapped('user_id')
         for user in users:
-            bus_actions.signal(BUS_UPDATE, dict(patch, id=notify.id), user=user)
+            user.partner_id._bus_send(BUS_UPDATE, dict(patch, id=notify.id))
 
     # ------------------------------------------------------------
     # ТРАНСКРИПЦИЯ (§12.3, А8)
@@ -663,10 +672,9 @@ class MailNotifyRecipient(models.Model):
     read_date = fields.Datetime(string='Read On')
     popup_shown = fields.Boolean(string='Popup Shown', default=False)
 
-    _sql_constraints = [
-        ('notify_user_uniq', 'unique(notify_id, user_id)',
-         'A notification reaches every recipient only once.'),
-    ]
+    _notify_user_uniq = models.Constraint(
+        'UNIQUE(notify_id, user_id)',
+        "A notification reaches every recipient only once.")
 
     @api.constrains('user_id')
     def _check_internal_recipient(self):

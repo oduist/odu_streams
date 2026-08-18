@@ -14,40 +14,40 @@
                     <field name="record_name" readonly="1"/>
                 </group>
                 <div class="alert alert-warning" role="alert"
-                     attrs="{'invisible': [('state', '=', 'done')]}">
+                     invisible="state == 'done'">
                     The invited contact will see every comment and message in this
                     channel posted after the selected moment, including attachments.
                     Notes, field changes and activities stay private.
                 </div>
-                <group attrs="{'invisible': [('state', '=', 'done')]}">
+                <group invisible="state == 'done'">
                     <field name="partner_ids" widget="many2many_tags"
                         options="{'no_quick_create': True}"
                         placeholder="Pick the contacts to invite"/>
                     <field name="history_from"/>
                     <field name="send_email"/>
                 </group>
-                <div attrs="{'invisible': [('state', '!=', 'done')]}">
+                <div invisible="state != 'done'">
                     <h3>Personal links</h3>
                     <p class="text-muted">
                         Copy the link and send it to the contact if they have no email.
                         Every link works only once.
                     </p>
                     <field name="link_ids" nolabel="1" readonly="1">
-                        <tree create="false" delete="false">
+                        <list create="false" delete="false">
                             <field name="partner_id"/>
                             <field name="url" widget="CopyClipboardChar"/>
                             <field name="email_sent"/>
-                        </tree>
+                        </list>
                     </field>
                     <div class="alert alert-warning" role="alert"
-                         attrs="{'invisible': [('reply_warning', '=', False)]}">
+                         invisible="not reply_warning">
                         <field name="reply_warning" nolabel="1" readonly="1"/>
                     </div>
                 </div>
-                <div attrs="{'invisible': [('access_ids', '=', [])]}">
+                <div invisible="not access_ids">
                     <h3>Existing access</h3>
                     <field name="access_ids" nolabel="1">
-                        <tree create="false" delete="false">
+                        <list create="false" delete="false">
                             <field name="partner_id"/>
                             <field name="invited_on"/>
                             <field name="last_seen"/>
@@ -55,19 +55,19 @@
                             <field name="participant_id" invisible="1"/>
                             <button name="action_revoke_participant" type="object"
                                 string="Revoke" icon="fa-ban" class="text-danger"/>
-                        </tree>
+                        </list>
                     </field>
                 </div>
                 <footer>
                     <button string="Invite" name="action_invite" type="object"
                         class="btn-primary" data-hotkey="q"
-                        attrs="{'invisible': [('state', '=', 'done')]}"/>
+                        invisible="state == 'done'"/>
                     <button string="Cancel" class="btn-secondary"
                         special="cancel" data-hotkey="z"
-                        attrs="{'invisible': [('state', '=', 'done')]}"/>
+                        invisible="state == 'done'"/>
                     <button string="Close" class="btn-primary"
                         special="cancel"
-                        attrs="{'invisible': [('state', '!=', 'done')]}"/>
+                        invisible="state != 'done'"/>
                 </footer>
             </form>
         </field>

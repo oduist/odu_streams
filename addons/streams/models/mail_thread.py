@@ -2,8 +2,9 @@
 import logging
 
 from odoo import models, api
+from odoo.addons.mail.tools.discuss import Store
 from odoo.exceptions import AccessError
-from odoo.osv import expression
+from odoo.fields import Domain
 
 from .mail_message import (
     STREAM_CHANNEL_TRIGGERS, STREAM_COMMENT, STREAM_MESSAGE)
@@ -11,14 +12,13 @@ from .mail_message import (
 _logger = logging.getLogger(__name__)
 
 # Модели, для которых канал записи не заводится ни при каких условиях.
-# mail.channel — сам канал; connect_messagebox.message — по решению
+# discuss.channel — сам канал; connect_messagebox.message — по решению
 # пользователя; mail.activity наследует mail.thread не везде, но на всякий
 # случай перечислена явно.
 STREAMS_MODEL_BLACKLIST = (
-    'mail.channel',
+    'discuss.channel',
     'connect_messagebox.message',
     'mail.activity',
-    'mail.wizard.invite',
 )
 
 
@@ -64,12 +64,13 @@ class MailThread(models.AbstractModel):
     # ЗАПРЕТ ПИСЕМ ВНУТРЕННИМ ПОЛЬЗОВАТЕЛЯМ (§7)
     # ------------------------------------------------------------
 
-    def _notify_record_by_email(self, message, recipients_data, msg_vals=False, **kwargs):
+    def _notify_thread_by_email(self, message, recipients_data, *,
+                                msg_vals=False, **kwargs):
         """Внутренние пользователи не получают писем из записей.
 
-        Фильтруем по `type`, а не по `notif`: `mail.wizard.invite`
-        вызывает этот метод напрямую с зашитым `notif='email'`, и по
-        `notif` приглашение внутреннему сотруднику всё равно ушло бы
+        Фильтруем по `type`, а не по `notif`: визард подписчиков
+        (`mail.followers.edit`) шлёт приглашения с зашитым `notif='email'`,
+        и по `notif` приглашение внутреннему сотруднику всё равно ушло бы
         письмом.
         """
         external = [
@@ -83,28 +84,8 @@ class MailThread(models.AbstractModel):
                 'сообщения %s', dropped, message.id)
         if not external:
             return True
-        return super()._notify_record_by_email(
+        return super()._notify_thread_by_email(
             message, external, msg_vals=msg_vals, **kwargs)
-
-    # ------------------------------------------------------------
-    # ПОДТИП ИЗМЕНЕНИЙ (§4.1, §8.2)
-    # ------------------------------------------------------------
-
-    def _message_log(self, **kwargs):
-        """Схлопнутое сообщение трекинга получает подтип Change.
-
-        `mail_extra_recipients` ставит на трекинг `mail_track_log_only`,
-        поэтому ядро уводит изменения в `_message_log` с подтипом
-        `mail.mt_note` — по нему изменение неотличимо от заметки.
-        Подтип Change объявлен `default=False`, так что подписчиков у
-        него нет и рассылки по-прежнему не происходит.
-        """
-        if kwargs.get('tracking_value_ids') and not kwargs.get('subtype_id'):
-            subtype_id = self.env['ir.model.data']._xmlid_to_res_id(
-                'streams.mt_change', raise_if_not_found=False)
-            if subtype_id:
-                kwargs['subtype_id'] = subtype_id
-        return super()._message_log(**kwargs)
 
     # ------------------------------------------------------------
     # ПУБЛИКАЦИЯ СООБЩЕНИЯ
@@ -114,19 +95,17 @@ class MailThread(models.AbstractModel):
     def message_post(self, **kwargs):
         """Публикация сообщения не подписывает ни автора, ни получателей.
 
-        `mail_post_autofollow` ставит композер чаттера из JS, поэтому
-        убирать его надо из контекста, а не из аргументов.
+        В 19 автора подписывает сам `message_post` (если не задан
+        `mail_post_autofollow_author_skip`), а получателей-клиентов —
+        `mail_post_autofollow`. Гасим оба: подписка автора — только наша,
+        по правилам §5.1 (`_streams_subscribe_author`).
         """
-        context = self.env.context
-        if context.get('mail_post_autofollow') or not context.get(
-                'mail_create_nosubscribe'):
-            new_context = {
-                key: value for key, value in context.items()
-                if key != 'mail_post_autofollow'
-            }
-            new_context['mail_create_nosubscribe'] = True
-            self = self.with_context(new_context)
-        return super().message_post(**kwargs)
+        return super(
+            MailThread,
+            self.with_context(
+                mail_post_autofollow=False,
+                mail_post_autofollow_author_skip=True),
+        ).message_post(**kwargs)
 
     def _message_post_after_hook(self, message, msg_vals):
         """Ленивое создание канала записи и рассылка проекции (§5.1, §6).
@@ -148,7 +127,7 @@ class MailThread(models.AbstractModel):
     def _streams_handle_posted_message(self, message, msg_vals=None):
         self.ensure_one()
         if not self._streams_channel_enabled():
-            return self.env['mail.channel']
+            return self.env['discuss.channel']
         msg_vals = msg_vals or {}
         stream = self.env['mail.message']._streams_classify_vals(
             msg_vals.get('subtype_id') or message.subtype_id.id,
@@ -163,7 +142,7 @@ class MailThread(models.AbstractModel):
         if not channel and stream in STREAM_CHANNEL_TRIGGERS:
             channel = self._streams_get_or_create_channel()
         if not channel:
-            return self.env['mail.channel']
+            return self.env['discuss.channel']
         if not channel.active:
             # новое сообщение в архивированной записи реанимирует канал (§5.5)
             channel.sudo().write({'active': True})
@@ -211,8 +190,7 @@ class MailThread(models.AbstractModel):
     def _streams_check_readable(self):
         """Подписка — операция над записью: без права чтения её нет."""
         self.ensure_one()
-        self.check_access_rights('read')
-        self.check_access_rule('read')
+        self.check_access('read')
 
     def streams_get_field_subscription(self):
         """Состояние подписки текущего пользователя на поля записи.
@@ -260,7 +238,7 @@ class MailThread(models.AbstractModel):
             self._name, self.id, field_ids)
         if subscription:
             # личный канал заводится лениво — при первой подписке (§8.3)
-            self.env['mail.channel']._streams_get_changes_channel(
+            self.env['discuss.channel']._streams_get_changes_channel(
                 self.env.user)
         return {
             'res_model': self._name,
@@ -285,8 +263,8 @@ class MailThread(models.AbstractModel):
         """Канал записи, если он уже создан (в том числе архивированный)."""
         self.ensure_one()
         if not self._streams_channel_enabled() or not self.id:
-            return self.env['mail.channel']
-        return self.env['mail.channel'].sudo().with_context(
+            return self.env['discuss.channel']
+        return self.env['discuss.channel'].sudo().with_context(
             active_test=False).search([
                 ('channel_kind', '=', 'record'),
                 ('res_model', '=', self._name),
@@ -296,8 +274,8 @@ class MailThread(models.AbstractModel):
     def _streams_find_channels(self):
         """Каналы всех записей набора."""
         if not self.ids or not self._streams_channel_enabled():
-            return self.env['mail.channel']
-        return self.env['mail.channel'].sudo().with_context(
+            return self.env['discuss.channel']
+        return self.env['discuss.channel'].sudo().with_context(
             active_test=False).search([
                 ('channel_kind', '=', 'record'),
                 ('res_model', '=', self._name),
@@ -320,7 +298,6 @@ class MailThread(models.AbstractModel):
         values = {
             'name': self._streams_channel_name(),
             'channel_type': 'channel',
-            'public': 'private',
             'channel_kind': 'record',
             'res_model': self._name,
             'res_id': self.id,
@@ -330,23 +307,22 @@ class MailThread(models.AbstractModel):
             values['company_id'] = company.id if company else False
         follower_partners = self._streams_follower_partners()
         if follower_partners:
-            values['channel_last_seen_partner_ids'] = [
+            values['channel_member_ids'] = [
                 (0, 0, {'partner_id': partner_id})
                 for partner_id in follower_partners
             ]
         # streams_sync: зеркало «участник → follower» при создании не нужно —
         # участники и так копируются из followers, а создателя ядро добавляет
         # принудительно, и без guard'а он стал бы follower'ом записи
-        channel = self.env['mail.channel'].sudo().with_context(
+        channel = self.env['discuss.channel'].sudo().with_context(
             streams_sync=True).create(values)
         # участники канала ≡ followers записи (§5.3): создателя, которого
         # ядровый create добавил сам, из участников убираем
         creator_partner = self.env.user.partner_id
         if creator_partner and creator_partner.id not in follower_partners:
-            channel.sudo().with_context(
-                streams_sync=True).channel_last_seen_partner_ids.filtered(
-                    lambda member: member.partner_id == creator_partner
-            ).unlink()
+            channel.sudo().channel_member_ids.filtered(
+                lambda member: member.partner_id == creator_partner
+            ).with_context(streams_sync=True).unlink()
         channel._streams_attach_history()
         _logger.info(
             'streams: создан канал записи %s для %s,%s',
@@ -370,10 +346,10 @@ class MailThread(models.AbstractModel):
     def _streams_broadcast(self, channel, message):
         """Разослать проекцию участникам, у которых есть доступ к записи.
 
-        Ядро шлёт `mail.channel/new_message` на bus-канал самого
-        `mail.channel`, то есть всем участникам без проверки прав. Тело
+        Ядро шлёт `discuss.channel/new_message` на bus-канал самого
+        `discuss.channel`, то есть всем участникам без проверки прав. Тело
         сообщения записи участнику без доступа к записи отдавать нельзя,
-        поэтому шлём адресно.
+        поэтому шлём адресно, персональным Store-payload'ом.
         """
         if not channel:
             return
@@ -381,15 +357,14 @@ class MailThread(models.AbstractModel):
             channel.sudo().channel_partner_ids)
         if not recipients:
             return
-        payload = message.sudo().message_format()[0]
-        notifications = [
-            (partner, 'mail.channel/new_message', {
+        message_sudo = message.sudo()
+        for partner in recipients:
+            payload = {
+                'data': Store(bus_channel=partner).add(
+                    message_sudo).get_result(),
                 'id': channel.id,
-                'message': dict(payload),
-            })
-            for partner in recipients
-        ]
-        self.env['bus.bus'].sudo()._sendmany(notifications)
+            }
+            partner._bus_send('discuss.channel/new_message', payload)
 
     def _streams_readable_partners(self, partners):
         """Партнёры, чьи пользователи имеют доступ на чтение записи.
@@ -416,9 +391,8 @@ class MailThread(models.AbstractModel):
             if not user:
                 continue
             try:
-                # ormcache, SQL не делает
-                if not self.with_user(user).check_access_rights(
-                        'read', raise_exception=False):
+                # пустой recordset: проверка модельных прав без ir.rule
+                if not self.env[self._name].with_user(user).has_access('read'):
                     continue
                 domain = rule_model.with_user(user)._compute_domain(
                     self._name, 'read')
@@ -430,7 +404,7 @@ class MailThread(models.AbstractModel):
                     domain_cache[key] = True
                 else:
                     domain_cache[key] = bool(record_model.search_count(
-                        expression.AND([[('id', '=', self.id)], domain])))
+                        Domain('id', '=', self.id) & Domain(domain)))
             if domain_cache[key]:
                 readable |= partner
         return readable
@@ -485,8 +459,11 @@ class MailThread(models.AbstractModel):
             if add:
                 channel_sudo.add_members(partner_ids=list(partner_ids))
             else:
-                channel_sudo._action_remove_members(
-                    self.env['res.partner'].browse(list(partner_ids)))
+                members = self.env['discuss.channel.member'].sudo().search([
+                    ('channel_id', '=', channel.id),
+                    ('partner_id', 'in', list(partner_ids)),
+                ])
+                members.with_context(streams_sync=True).unlink()
 
     # ------------------------------------------------------------
     # ИМЯ, АРХИВАЦИЯ, СЛИЯНИЕ (§5.2, §5.5, §5.6)
@@ -496,8 +473,8 @@ class MailThread(models.AbstractModel):
         """Поля, изменение которых может поменять display_name.
 
         Надёжного хука на смену `display_name` в ядре нет: у большинства
-        целевых моделей он не stored и `name_get` переопределён. Модели
-        могут расширить список.
+        целевых моделей он не stored и `_compute_display_name`
+        переопределён. Модели могут расширить список.
         """
         if self._rec_name and self._rec_name in self._fields:
             return [self._rec_name]
@@ -528,7 +505,7 @@ class MailThread(models.AbstractModel):
                     channel_sudo.write({'active': active})
             name = record._streams_channel_name()
             if name and channel_sudo.name != name:
-                channel_sudo.channel_rename(name)
+                channel_sudo.write({'name': name})
 
     def message_change_thread(self, new_thread, new_parent_message=False):
         """Слияние записей сливает и каналы (§5.6)."""

@@ -1,133 +1,59 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
 
+    <!-- В 19 настройки описываются структурой app/block/setting: компилятор
+         формы сам строит панели, ярлык берётся из string, подпись — из help. -->
     <record id="res_config_settings_view_form" model="ir.ui.view">
         <field name="name">res.config.settings.view.form.inherit.streams</field>
         <field name="model">res.config.settings</field>
         <field name="inherit_id" ref="base.res_config_settings_view_form"/>
         <field name="arch" type="xml">
-            <xpath expr="//div[hasclass('settings')]" position="inside">
-                <div class="app_settings_block" data-string="Streams"
-                     string="Streams" data-key="streams"
+            <xpath expr="//form" position="inside">
+                <app data-string="Streams" string="Streams" name="streams"
                      groups="base.group_system">
-                    <h2>Notifications</h2>
-                    <div class="row mt16 o_settings_container">
-                        <div class="col-12 col-lg-6 o_setting_box">
-                            <div class="o_setting_right_pane">
-                                <label for="streams_notify_timeout"/>
-                                <div class="text-muted">
-                                    Seconds a non-sticky notification popup stays on screen.
-                                </div>
-                                <div class="content-group mt16">
-                                    <field name="streams_notify_timeout" class="o_light_label"/>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <h2>Voice Transcription</h2>
-                    <div class="row mt16 o_settings_container">
-                        <div class="col-12 col-lg-6 o_setting_box">
-                            <div class="o_setting_right_pane">
-                                <label for="streams_openai_api_key"/>
-                                <div class="text-muted">
-                                    Voice notifications are transcribed in the background.
-                                    Leave empty to send voice messages without a transcript.
-                                </div>
-                                <div class="content-group mt16">
-                                    <field name="streams_openai_api_key" class="o_light_label"
-                                           password="True"/>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-12 col-lg-6 o_setting_box">
-                            <div class="o_setting_right_pane">
-                                <label for="streams_transcription_model"/>
-                                <div class="text-muted">
-                                    OpenAI model used to transcribe voice notifications.
-                                </div>
-                                <div class="content-group mt16">
-                                    <field name="streams_transcription_model" class="o_light_label"/>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <h2>Guest Access</h2>
-                    <div class="row mt16 o_settings_container">
-                        <div class="col-12 col-lg-6 o_setting_box">
-                            <div class="o_setting_right_pane">
-                                <label for="streams_guest_session_days"/>
-                                <div class="text-muted">
-                                    Days a guest chat session stays valid.
-                                    The session is extended on every visit.
-                                </div>
-                                <div class="content-group mt16">
-                                    <field name="streams_guest_session_days" class="o_light_label"/>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-12 col-lg-6 o_setting_box">
-                            <div class="o_setting_right_pane">
-                                <label for="streams_guest_poll_interval"/>
-                                <div class="text-muted">
-                                    Seconds between two refreshes of the guest chat page.
-                                </div>
-                                <div class="content-group mt16">
-                                    <field name="streams_guest_poll_interval" class="o_light_label"/>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-12 col-lg-6 o_setting_box">
-                            <div class="o_setting_right_pane">
-                                <label for="streams_guest_edit_window"/>
-                                <div class="text-muted">
-                                    Seconds during which a customer may edit or delete
-                                    their own message.
-                                </div>
-                                <div class="content-group mt16">
-                                    <field name="streams_guest_edit_window" class="o_light_label"/>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-12 col-lg-6 o_setting_box">
-                            <div class="o_setting_right_pane">
-                                <label for="streams_guest_presence_timeout"/>
-                                <div class="text-muted">
-                                    A customer without activity for that many seconds
-                                    counts as absent and receives the digest.
-                                </div>
-                                <div class="content-group mt16">
-                                    <field name="streams_guest_presence_timeout" class="o_light_label"/>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-12 col-lg-6 o_setting_box">
-                            <div class="o_setting_right_pane">
-                                <label for="streams_guest_max_upload_mb"/>
-                                <div class="text-muted">
-                                    Maximum size of a single file a customer may attach.
-                                </div>
-                                <div class="content-group mt16">
-                                    <field name="streams_guest_max_upload_mb" class="o_light_label"/>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-12 col-lg-6 o_setting_box">
-                            <div class="o_setting_right_pane">
-                                <label for="streams_guest_digest_hours"/>
-                                <div class="text-muted">
-                                    How often absent customers are notified about new
-                                    messages. Guest replies by email need
-                                    <strong>Alias Domain</strong> and the catchall alias
-                                    to be configured, otherwise there is nowhere to
-                                    reply to.
-                                </div>
-                                <div class="content-group mt16">
-                                    <field name="streams_guest_digest_hours" class="o_light_label"/>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                    <block title="Notifications">
+                        <setting string="Notification Popup Timeout"
+                                 help="Seconds a non-sticky notification popup stays on screen.">
+                            <field name="streams_notify_timeout"/>
+                        </setting>
+                    </block>
+                    <block title="Voice Transcription">
+                        <setting string="Voice Transcription API Key"
+                                 help="Voice notifications are transcribed in the background. Leave empty to send voice messages without a transcript.">
+                            <field name="streams_openai_api_key" password="True"/>
+                        </setting>
+                        <setting string="Transcription Model"
+                                 help="OpenAI model used to transcribe voice notifications.">
+                            <field name="streams_transcription_model"/>
+                        </setting>
+                    </block>
+                    <block title="Guest Access">
+                        <setting string="Guest Session Lifetime"
+                                 help="Days a guest chat session stays valid. The session is extended on every visit.">
+                            <field name="streams_guest_session_days"/>
+                        </setting>
+                        <setting string="Guest Poll Interval"
+                                 help="Seconds between two refreshes of the guest chat page.">
+                            <field name="streams_guest_poll_interval"/>
+                        </setting>
+                        <setting string="Guest Edit Window"
+                                 help="Seconds during which a customer may edit or delete their own message.">
+                            <field name="streams_guest_edit_window"/>
+                        </setting>
+                        <setting string="Guest Presence Timeout"
+                                 help="A customer without activity for that many seconds counts as absent and receives the digest.">
+                            <field name="streams_guest_presence_timeout"/>
+                        </setting>
+                        <setting string="Guest Upload Limit (MB)"
+                                 help="Maximum size of a single file a customer may attach.">
+                            <field name="streams_guest_max_upload_mb"/>
+                        </setting>
+                        <setting string="Guest Digest Interval (hours)"
+                                 help="How often absent customers are notified about new messages. Guest replies by email need the Alias Domain and the catchall alias to be configured, otherwise there is nowhere to reply to.">
+                            <field name="streams_guest_digest_hours"/>
+                        </setting>
+                    </block>
+                </app>
             </xpath>
         </field>
     </record>

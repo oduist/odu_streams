@@ -1,8 +1,8 @@
 # -*- encoding: utf-8 -*-
 import logging
 
-from odoo import models, fields, api, tools
-from odoo.osv import expression
+from odoo import models, fields, api
+from odoo.fields import Domain
 
 _logger = logging.getLogger(__name__)
 
@@ -49,18 +49,14 @@ class MailFieldSubscription(models.Model):
         'ir.model.fields', 'mail_field_subscription_field_rel',
         'subscription_id', 'field_id', string='Tracked Fields')
 
-    _sql_constraints = [
-        ('streams_subscription_uniq',
-         'unique(user_id, res_model, res_id)',
-         'A user can subscribe to a record only once.'),
-    ]
-
-    def init(self):
-        # индекс по записи-источнику: маршрутизация изменений ищет подписки
-        # именно по (res_model, res_id), а не по пользователю
-        tools.create_index(
-            self._cr, 'mail_field_subscription_record_idx', self._table,
-            ['res_model', 'res_id'])
+    # имена SQL-объектов совпадают со старыми (`{таблица}_{имя атрибута
+    # без подчёркивания}`), поэтому миграции индексов не требуется
+    _streams_subscription_uniq = models.Constraint(
+        'unique(user_id, res_model, res_id)',
+        'A user can subscribe to a record only once.')
+    # индекс по записи-источнику: маршрутизация изменений ищет подписки
+    # именно по (res_model, res_id), а не по пользователю
+    _record_idx = models.Index('(res_model, res_id)')
 
     # ------------------------------------------------------------
     # ПОИСК
@@ -89,12 +85,12 @@ class MailFieldSubscription(models.Model):
         }
         if not targets:
             return self.browse()
-        domain = expression.OR([
-            ['&', ('res_model', '=', res_model), ('res_id', 'in', res_ids)]
+        domain = Domain.OR([
+            Domain('res_model', '=', res_model) & Domain('res_id', 'in', res_ids)
             for res_model, res_ids in targets.items()
         ])
         if user is not None:
-            domain = expression.AND([domain, [('user_id', '=', user.id)]])
+            domain &= Domain('user_id', '=', user.id)
         return self.sudo().search(domain)
 
     # ------------------------------------------------------------

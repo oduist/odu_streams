@@ -18,14 +18,15 @@ class StreamsGuestInviteWizard(models.TransientModel):
     _description = 'Invite a Customer to the Chat'
 
     channel_id = fields.Many2one(
-        'mail.channel', string='Channel', readonly=True)
+        'discuss.channel', string='Channel', readonly=True)
     res_model = fields.Char(string='Related Document Model', required=True)
     res_id = fields.Integer(string='Related Document ID', required=True)
     record_name = fields.Char(string='Record', readonly=True)
     partner_ids = fields.Many2many(
         'res.partner', 'streams_guest_invite_wizard_partner_rel',
         'wizard_id', 'partner_id', string='Contacts',
-        domain="[('is_company', '=', False), ('type', '!=', 'private')]",
+        # в 19 у res.partner.type значения 'private' больше нет — лист убран
+        domain="[('is_company', '=', False)]",
         help="Each contact receives their own personal link.")
     history_from = fields.Datetime(
         string='Show History From', required=True,
@@ -55,7 +56,7 @@ class StreamsGuestInviteWizard(models.TransientModel):
         оставлять после себя канал. Создание — в `action_invite`.
         """
         values = super().default_get(fields_list)
-        channel = self.env['mail.channel'].browse(
+        channel = self.env['discuss.channel'].browse(
             self.env.context.get('default_channel_id') or []).exists()
         res_model = self.env.context.get('default_res_model')
         res_id = self.env.context.get('default_res_id')
@@ -88,8 +89,7 @@ class StreamsGuestInviteWizard(models.TransientModel):
         record = self.env[res_model].browse(res_id).exists()
         if not record:
             raise UserError(_("The record no longer exists."))
-        record.check_access_rights('read')
-        record.check_access_rule('read')
+        record.check_access('read')
         return record
 
     @api.model

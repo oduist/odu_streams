@@ -4,8 +4,9 @@ import secrets
 from datetime import timedelta
 
 from odoo import models, fields, api, _
+from odoo.addons.mail.tools.discuss import Store
 from odoo.exceptions import ValidationError
-from odoo.osv import expression
+from odoo.fields import Domain
 from odoo.tools import consteq
 from odoo.tools.mail import plaintext2html
 
@@ -50,7 +51,7 @@ GUEST_DELETED_PREFIX = 'Deleted by the customer:'
 class MailChannelExternalParticipant(models.Model):
     """Внешний участник канала записи — гостевой доступ клиента (§9).
 
-    Модель осознанно **не** `mail.channel.partner` и **не** `mail.guest`
+    Модель осознанно **не** `discuss.channel.member` и **не** `mail.guest`
     (Р1): строка участника канала немедленно уехала бы в followers записи
     через наше зеркало, а followers по §10.3 — только внутренние.
     Доступ гостя живёт только здесь, ядровые механики канала (channel_info,
@@ -66,7 +67,7 @@ class MailChannelExternalParticipant(models.Model):
     _order = 'id desc'
 
     channel_id = fields.Many2one(
-        'mail.channel', string='Channel', required=True, index=True,
+        'discuss.channel', string='Channel', required=True, index=True,
         ondelete='cascade')
     partner_id = fields.Many2one(
         'res.partner', string='Contact', required=True, index=True,
@@ -114,39 +115,13 @@ class MailChannelExternalParticipant(models.Model):
         string='Invitation Link', compute='_compute_link_url',
         groups='base.group_system')
 
-    def init(self):
-        super().init()
-        # Секреты уникальны глобально: поиск по токену идёт без канала.
-        self._cr.execute(
-            "SELECT indexname FROM pg_indexes WHERE indexname = %s",
-            ('mail_channel_ext_participant_token_uniq',))
-        if not self._cr.fetchone():
-            self._cr.execute("""
-                CREATE UNIQUE INDEX mail_channel_ext_participant_token_uniq
-                    ON mail_channel_external_participant (token)
-                 WHERE token IS NOT NULL
-            """)
-        self._cr.execute(
-            "SELECT indexname FROM pg_indexes WHERE indexname = %s",
-            ('mail_channel_ext_participant_session_uniq',))
-        if not self._cr.fetchone():
-            self._cr.execute("""
-                CREATE UNIQUE INDEX mail_channel_ext_participant_session_uniq
-                    ON mail_channel_external_participant (session_token)
-                 WHERE session_token IS NOT NULL
-            """)
-        # Повторное приглашение живого участника обновляет ту же строку;
-        # отозванные строки остаются историей и под ограничение не попадают.
-        self._cr.execute(
-            "SELECT indexname FROM pg_indexes WHERE indexname = %s",
-            ('mail_channel_ext_participant_active_uniq',))
-        if not self._cr.fetchone():
-            self._cr.execute("""
-                CREATE UNIQUE INDEX mail_channel_ext_participant_active_uniq
-                    ON mail_channel_external_participant
-                       (channel_id, partner_id)
-                 WHERE active
-            """)
+    # Секреты уникальны глобально: поиск по токену идёт без канала.
+    _token_uniq = models.UniqueIndex("(token) WHERE token IS NOT NULL")
+    _session_uniq = models.UniqueIndex(
+        "(session_token) WHERE session_token IS NOT NULL")
+    # Повторное приглашение живого участника обновляет ту же строку;
+    # отозванные строки остаются историей и под ограничение не попадают.
+    _active_uniq = models.UniqueIndex("(channel_id, partner_id) WHERE active")
 
     # ------------------------------------------------------------
     # ОГРАНИЧЕНИЯ
@@ -528,9 +503,9 @@ class MailChannelExternalParticipant(models.Model):
         self.ensure_one()
         domain = self._streams_visible_domain()
         if after_id:
-            domain = expression.AND([domain, [('id', '>', int(after_id))]])
+            domain &= Domain('id', '>', int(after_id))
         if before_id:
-            domain = expression.AND([domain, [('id', '<', int(before_id))]])
+            domain &= Domain('id', '<', int(before_id))
         messages = self.env['mail.message'].sudo().search(
             domain, order='id desc', limit=limit)
         return messages.sorted('id')
@@ -542,8 +517,8 @@ class MailChannelExternalParticipant(models.Model):
             message_id = int(message_id)
         except (TypeError, ValueError):
             return self.env['mail.message']
-        domain = expression.AND([
-            self._streams_visible_domain(), [('id', '=', message_id)]])
+        domain = self._streams_visible_domain() \
+            & Domain('id', '=', message_id)
         return self.env['mail.message'].sudo().search(domain, limit=1)
 
     def _streams_post_message(self, body, attachment_ids=None):
@@ -596,7 +571,15 @@ class MailChannelExternalParticipant(models.Model):
         return message, False
 
     def _streams_update_message(self, message_id, body):
-        """Правка своего сообщения ядровым `_update_content` (Р7)."""
+        """Правка своего сообщения ядровым `_message_update_content` (Р7).
+
+        В 19 правка живёт на треде (`mail_thread.py:4932`), а не на самом
+        сообщении; гейт `_check_can_update_message_content` снимается
+        контекстом `streams_guest_edit` (см. наш `mail_thread`).
+        `attachment_ids=None` означает «вложения не трогать»: передать их
+        списком нельзя — `_process_attachments_for_post` под публичным
+        uid оставил бы только pending-вложения и уже привязанные выпали бы.
+        """
         self.ensure_one()
         message, error = self._streams_own_message(message_id)
         if error:
@@ -606,11 +589,12 @@ class MailChannelExternalParticipant(models.Model):
             return self.env['mail.message'], _("The message cannot be empty.")
         if len(body) > MAX_GUEST_BODY:
             return self.env['mail.message'], _("The message is too long.")
-        message.sudo().with_context(streams_guest_edit=True)._update_content(
-            body=plaintext2html(body),
-            attachment_ids=message.attachment_ids.ids)
-        self._streams_notify_message_update(
-            message, {'id': message.id, 'body': message.body})
+        record = self.sudo()._streams_record()
+        if not record:
+            return self.env['mail.message'], _("This chat is no longer active.")
+        record.with_context(streams_guest_edit=True)._message_update_content(
+            message.sudo(), body=plaintext2html(body), attachment_ids=None)
+        self._streams_notify_message_update(message)
         return message, False
 
     def _streams_delete_message(self, message_id):
@@ -636,17 +620,19 @@ class MailChannelExternalParticipant(models.Model):
             'subtype_id': note_subtype_id,
             'body': body,
         })
-        self._streams_notify_message_update(
-            message, {'id': message.id, 'body': body})
+        self._streams_notify_message_update(message)
         return message, False
 
     def _streams_toggle_reaction(self, message_id, content, add=True):
         """Реакция гостя (Р8).
 
-        Ядровый `_message_add_reaction` берёт партнёра из `env.user`, а под
-        sudo это OdooBot — поэтому пишем `mail.message.reaction` напрямую.
-        Партнёр у гостя настоящий, так что его реакция неотличима от
-        реакции сотрудника и корректно рисуется в Discuss.
+        Ядровый путь (`_message_reaction`) рассчитан на залогиненного
+        пользователя или `mail.guest`, а наш гость — ни то, ни другое:
+        под публичным uid партнёра взять неоткуда, поэтому пишем
+        `mail.message.reaction` напрямую (поля в 19 те же: message_id,
+        content, partner_id). Партнёр у гостя настоящий, так что его
+        реакция неотличима от реакции сотрудника и корректно рисуется
+        в Discuss.
         """
         self.ensure_one()
         if content not in GUEST_REACTIONS:
@@ -669,21 +655,7 @@ class MailChannelExternalParticipant(models.Model):
             })
         elif not add and reaction:
             reaction.unlink()
-        reactions = reaction_model.search([
-            ('message_id', '=', message.id), ('content', '=', content)])
-        self._streams_notify_message_update(message, {
-            'id': message.id,
-            'messageReactionGroups': [
-                ('insert' if reactions else 'insert-and-unlink', {
-                    'messageId': message.id,
-                    'content': content,
-                    'count': len(reactions),
-                    'guests': [],
-                    'partners': [
-                        ('insert', {'id': partner.id, 'name': partner.name})],
-                }),
-            ],
-        })
+        self._streams_notify_message_update(message)
         return True, False
 
     def _streams_attachment_message(self, attachment_id):
@@ -693,17 +665,18 @@ class MailChannelExternalParticipant(models.Model):
             attachment_id = int(attachment_id)
         except (TypeError, ValueError):
             return self.env['mail.message']
-        domain = expression.AND([
-            self._streams_visible_domain(),
-            [('attachment_ids', 'in', [attachment_id])],
-        ])
+        domain = self._streams_visible_domain() \
+            & Domain('attachment_ids', 'in', [attachment_id])
         return self.env['mail.message'].sudo().search(domain, limit=1)
 
-    def _streams_notify_message_update(self, message, payload):
+    def _streams_notify_message_update(self, message):
         """Сказать открытым клиентам сотрудников, что сообщение изменилось.
 
         Адресно и только тем, у кого есть право читать запись, — как и
-        обычная проекция (`mail_thread._streams_broadcast`).
+        обычная проекция (`mail_thread._streams_broadcast`). Payload —
+        персональный Store с самим сообщением: дефолтный
+        `_to_store_defaults` уже отдаёт и body, и реакции, поэтому одна
+        и та же рассылка покрывает правку, удаление и реакции.
         """
         self.ensure_one()
         record = self.sudo()._streams_record()
@@ -713,10 +686,9 @@ class MailChannelExternalParticipant(models.Model):
             self.sudo().channel_id.channel_partner_ids)
         if not recipients:
             return
-        self.env['bus.bus'].sudo()._sendmany([
-            (recipient, 'mail.message/insert', dict(payload))
-            for recipient in recipients
-        ])
+        message_sudo = message.sudo()
+        for recipient in recipients:
+            Store(bus_channel=recipient).add(message_sudo).bus_send()
 
     def _streams_members(self):
         """Все участники канала (решение 3 от 2026-08-18).
@@ -860,11 +832,9 @@ class MailChannelExternalParticipant(models.Model):
         бессмысленно.
         """
         self.ensure_one()
-        domain = expression.AND([
-            self.env['mail.message']._streams_guest_message_domain(self),
-            [
-                ('date', '>', since),
-                ('author_id', '!=', self.sudo().partner_id.id),
-            ],
-        ])
+        domain = (
+            self.env['mail.message']._streams_guest_message_domain(self)
+            & Domain('date', '>', since)
+            & Domain('author_id', '!=', self.sudo().partner_id.id)
+        )
         return self.env['mail.message'].sudo().search_count(domain)

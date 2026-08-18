@@ -28,19 +28,20 @@ class ResUsers(models.Model):
             self._streams_force_inbox()
         return result
 
-    def _init_messaging(self):
+    def _init_messaging(self, store):
         """Уведомления едут одним payload'ом со стартом клиента (§12.4).
 
         Счётчик бейджа, id личного канала и накопившиеся, но ещё не
         показанные попапы — всё это нужно клиенту сразу, отдельный RPC
-        только добавил бы round-trip.
+        только добавил бы round-trip. В 19 метод ничего не возвращает,
+        а наполняет переданный Store.
         """
-        values = super()._init_messaging()
+        super()._init_messaging(store)
         # payload считается для владельца сессии, а не для того, кто вызвал:
         # ядро зовёт метод на `request.env.user`, но подстраховаться дешевле
-        values['streams_notify'] = self.env['mail.notify'].with_user(
-            self)._streams_init_messaging()
-        return values
+        store.add_global_values(
+            streams_notify=self.env['mail.notify'].with_user(
+                self)._streams_init_messaging())
 
     def _streams_force_inbox(self):
         """Удержать внутренних на inbox, а внешних (share) — на email.

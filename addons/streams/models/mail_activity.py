@@ -45,7 +45,9 @@ class MailActivity(models.Model):
 
     def unlink(self):
         if not self.env.context.get(_DONE_CONTEXT):
-            for activity in self:
+            # в 19 закрытая активность архивируется (`active = False`), а не
+            # удаляется; удаление архивной — чистка истории, не отмена
+            for activity in self.filtered('active'):
                 activity._streams_log_event('cancelled')
         return super().unlink()
 
@@ -53,10 +55,13 @@ class MailActivity(models.Model):
         """Закрытие активности.
 
         Своё сообщение не пишем: ядро постит богатое сообщение по шаблону
-        `mail.message_activity_done` (тип активности, feedback, перенос
-        вложений) с подтипом `mail.mt_activities`. Чтобы не плодить дубль,
+        `mail.message_activity_done` (`message_post_with_source`, тип
+        сообщения по умолчанию `notification`, feedback, перенос вложений)
+        с подтипом `mail.mt_activities`. Чтобы не плодить дубль,
         переподтипляем ядровое сообщение в Activity и уже с правильным
-        подтипом проводим его через канал записи.
+        подтипом проводим его через канал записи. Guard-контекст остаётся:
+        в 19 сама активность архивируется, но потерявшие запись активности
+        (`activities_to_remove`) внутри `_action_done` всё ещё удаляются.
         """
         messages, next_activities = super(
             MailActivity,

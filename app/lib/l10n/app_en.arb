@@ -1,0 +1,95 @@
+{
+  "@@locale": "en",
+  "appTitle": "Streams",
+  "loginTitle": "Sign in",
+  "serverUrlLabel": "Server URL",
+  "loginLabel": "Login",
+  "passwordLabel": "Password",
+  "totpLabel": "Authentication code",
+  "totpHelp": "Two-factor authentication is enabled. Enter the code from your authenticator app.",
+  "signInButton": "Sign in",
+  "fieldRequired": "Required field",
+  "errInvalidCredentials": "Invalid login or password",
+  "errTotpInvalid": "Invalid authentication code",
+  "errNetwork": "Network error. Check the server URL and your connection.",
+  "errAccessDenied": "Access denied",
+  "errServer": "Server error: {message}",
+  "@errServer": {
+    "placeholders": {
+      "message": {"type": "String"}
+    }
+  },
+  "sessionExpired": "Session expired, please sign in again",
+  "channelsSearchHint": "Filter by name",
+  "sectionNotifications": "Notifications",
+  "sectionChanges": "Changes",
+  "sectionMessages": "Messages",
+  "sectionChats": "Channels",
+  "noChannels": "No channels",
+  "membersCount": "{count} members",
+  "@membersCount": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "filterComments": "Comments",
+  "filterNotes": "Notes",
+  "filterCustomers": "Customers",
+  "filterChanges": "Changes",
+  "filterActivities": "Activities",
+  "composerHint": "Message…",
+  "kindComment": "Comment",
+  "kindNote": "Note",
+  "noMessages": "No messages yet",
+  "activityLabel": "Activity",
+  "changesTitle": "Changes",
+  "noChanges": "No field changes yet",
+  "loadMore": "Load more",
+  "notifyTitle": "Notifications",
+  "tabReceived": "Received",
+  "tabSent": "Sent",
+  "noNotifications": "No notifications",
+  "newNotifyTitle": "New notification",
+  "notifyBodyHint": "Notification text",
+  "recipientsLabel": "Recipients",
+  "recipientsEmpty": "Select at least one recipient",
+  "recipientsManualLabel": "Additional user IDs",
+  "recipientsManualHint": "User IDs, comma-separated",
+  "stickyLabel": "Sticky",
+  "stickyHelp": "The popup stays on screen until the recipient closes it",
+  "timeoutLabel": "Timeout, seconds",
+  "sendButton": "Send",
+  "sentOk": "Sent",
+  "cancelButton": "Cancel",
+  "replyButton": "Reply",
+  "replyTitle": "Reply",
+  "readAt": "read {time}",
+  "@readAt": {
+    "placeholders": {
+      "time": {"type": "String"}
+    }
+  },
+  "unreadLabel": "unread",
+  "voiceMessage": "Voice message, {duration} s",
+  "@voiceMessage": {
+    "placeholders": {
+      "duration": {"type": "int"}
+    }
+  },
+  "settingsTitle": "Settings",
+  "serverLabel": "Server",
+  "userLabel": "User",
+  "versionLabel": "Application version",
+  "logoutButton": "Sign out",
+  "logoutConfirm": "Sign out and revoke this device token?",
+  "okButton": "OK",
+  "closeButton": "Close",
+  "retryButton": "Retry",
+  "stickyCounter": "{index} of {total}",
+  "@stickyCounter": {
+    "placeholders": {
+      "index": {"type": "int"},
+      "total": {"type": "int"}
+    }
+  }
+}

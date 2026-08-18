@@ -994,6 +994,29 @@ email.document, ksef.invoice, connect_messagebox.message и др.).
 4. В матрицу классификатора добавлен `message_type='email_outgoing'`
    (новый тип исходящих в 19) — относится к потоку `message`.
 
+### Фаза 7 — Flutter-приложение (MVP, 2026-08-18)
+
+Клиент в `app/` этого репозитория (Flutter stable, платформы android/ios;
+зависимости: http, provider, shared_preferences, intl,
+flutter_localizations). `flutter analyze` — 0 issues, `flutter test` — 19
+зелёных (модели по контракту, клиент с кодами ошибок, widget-тесты логина).
+
+- Экраны: Login (URL + логин/пароль + TOTP по `totp_required`), Channels
+  (секции по kind, бейджи unread, быстрый фильтр), Channel (лента с
+  пагинацией, тумблеры фильтров потоков с персистом, композер Comment/Note,
+  mark_read по доскроллу, рендер «поле: было → стало»), Changes, Notify
+  (Received/Sent, отправка sticky/timeout, ответы), Settings.
+- In-app попапы уведомлений (не-sticky с таймаутом, sticky-стек с
+  пейджером, `popup_shown`, накопленные `pending` из init).
+- Poll-сервис: `/v1/poll` раз в 10 с, пауза в background, обработка всех
+  типов шины, авторазлогин по `auth_failed`.
+- Локализация: ARB en/pl/ru/uk (gen-l10n), переведены полностью.
+
+**Ограничения MVP (кандидаты v1.1):** загрузка вложений с клиента
+(чипы read-only), справочник получателей Notify (нужен эндпоинт),
+`@mention` в композере, экран подписки на поля (API готов), FCM/голос/звук
+попапов; bus-payload'ы не разбираются — по событию перезапрашивается лента.
+
 ### Фаза 6 — streams_mobile: серверный API мобильного клиента (2026-08-18)
 
 Реализует адаптированное к Odoo 19 ТЗ мобильного клиента

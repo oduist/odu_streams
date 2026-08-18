@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+
+    <!--
+        Подписка на поля персональная (§8.1): пользователь видит и правит
+        только свои записи подписки. Маршрутизация изменений ходит по
+        подпискам под sudo.
+    -->
+    <record id="mail_field_subscription_own_rule" model="ir.rule">
+        <field name="name">Field subscription: own only</field>
+        <field name="model_id" ref="model_mail_field_subscription"/>
+        <field name="domain_force">[('user_id', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+        <field name="perm_read" eval="True"/>
+        <field name="perm_write" eval="True"/>
+        <field name="perm_create" eval="True"/>
+        <field name="perm_unlink" eval="True"/>
+    </record>
+
+    <!--
+        Уведомление адресное (§12.1): его видят автор и получатели, правит и
+        удаляет только автор. Вложения уведомления наследуют этот доступ
+        автоматически — `ir.attachment.check` спрашивает права записи.
+    -->
+    <record id="mail_notify_read_rule" model="ir.rule">
+        <field name="name">Notify: read own or received</field>
+        <field name="model_id" ref="model_mail_notify"/>
+        <field name="domain_force">['|', ('author_id', '=', user.id), ('recipient_ids.user_id', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+        <field name="perm_read" eval="True"/>
+        <field name="perm_write" eval="False"/>
+        <field name="perm_create" eval="False"/>
+        <field name="perm_unlink" eval="False"/>
+    </record>
+
+    <record id="mail_notify_manage_rule" model="ir.rule">
+        <field name="name">Notify: manage own</field>
+        <field name="model_id" ref="model_mail_notify"/>
+        <field name="domain_force">[('author_id', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+        <field name="perm_read" eval="False"/>
+        <field name="perm_write" eval="True"/>
+        <field name="perm_create" eval="True"/>
+        <field name="perm_unlink" eval="True"/>
+    </record>
+
+    <record id="mail_notify_recipient_read_rule" model="ir.rule">
+        <field name="name">Notify recipient: read own or as author</field>
+        <field name="model_id" ref="model_mail_notify_recipient"/>
+        <field name="domain_force">['|', ('user_id', '=', user.id), ('notify_id.author_id', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+        <field name="perm_read" eval="True"/>
+        <field name="perm_write" eval="False"/>
+        <field name="perm_create" eval="False"/>
+        <field name="perm_unlink" eval="False"/>
+    </record>
+
+    <!--
+        Прочитанность и показ попапа отмечает сам получатель; какие поля ему
+        при этом разрешены, ограничивает `write` модели.
+    -->
+    <record id="mail_notify_recipient_mark_rule" model="ir.rule">
+        <field name="name">Notify recipient: mark own</field>
+        <field name="model_id" ref="model_mail_notify_recipient"/>
+        <field name="domain_force">[('user_id', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+        <field name="perm_read" eval="False"/>
+        <field name="perm_write" eval="True"/>
+        <field name="perm_create" eval="False"/>
+        <field name="perm_unlink" eval="False"/>
+    </record>
+
+    <record id="mail_notify_recipient_author_rule" model="ir.rule">
+        <field name="name">Notify recipient: manage as author</field>
+        <field name="model_id" ref="model_mail_notify_recipient"/>
+        <field name="domain_force">[('notify_id.author_id', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+        <field name="perm_read" eval="False"/>
+        <field name="perm_write" eval="True"/>
+        <field name="perm_create" eval="True"/>
+        <field name="perm_unlink" eval="True"/>
+    </record>
+
+</odoo>

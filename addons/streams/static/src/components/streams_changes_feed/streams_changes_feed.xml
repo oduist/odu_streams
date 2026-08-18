@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <t t-name="streams.ChangesFeed" owl="1">
+        <div class="o_StreamsChangesFeed">
+            <t t-if="state.isLoading">
+                <div class="o_StreamsChangesFeed_loading">
+                    <i class="fa fa-circle-o-notch fa-spin"/> Loading changes...
+                </div>
+            </t>
+            <t t-elif="state.items.length === 0">
+                <div class="o_StreamsChangesFeed_empty">
+                    No tracked changes yet. Use the Changes button in a record
+                    to pick the fields you want to watch.
+                </div>
+            </t>
+            <t t-else="">
+                <div class="o_StreamsChangesFeed_item"
+                    t-foreach="state.items" t-as="item"
+                    t-key="item.res_model + ',' + item.res_id"
+                    t-att-data-last-message-id="item.last_message_id"
+                    t-att-class="{ 'o-unread': item.unread }"
+                >
+                    <div class="o_StreamsChangesFeed_itemHeader">
+                        <a class="o_StreamsChangesFeed_recordName" href="#"
+                            t-att-data-res-model="item.res_model"
+                            t-att-data-res-id="item.res_id"
+                            t-on-click="onClickRecord"
+                        ><t t-esc="item.record_name"/></a>
+                    </div>
+                    <div class="o_StreamsChangesFeed_change"
+                        t-foreach="item.changes" t-as="change"
+                        t-key="change.message_id"
+                    >
+                        <div class="o_StreamsChangesFeed_changeMeta">
+                            <span class="o_StreamsChangesFeed_author"><t t-esc="change.author"/></span>
+                            <span class="o_StreamsChangesFeed_date"><t t-esc="formatDate(change.date)"/></span>
+                        </div>
+                        <div class="o_StreamsChangesFeed_value"
+                            t-foreach="change.values" t-as="value"
+                            t-key="value.field_id"
+                        >
+                            <span class="o_StreamsChangesFeed_field"><t t-esc="value.field_desc"/></span>
+                            <span class="o_StreamsChangesFeed_old"><t t-esc="formatValue(value.old)"/></span>
+                            <span class="o_StreamsChangesFeed_arrow">&#8594;</span>
+                            <span class="o_StreamsChangesFeed_new"><t t-esc="formatValue(value.new)"/></span>
+                        </div>
+                    </div>
+                </div>
+            </t>
+        </div>
+    </t>
+
+</templates>

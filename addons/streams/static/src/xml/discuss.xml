@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <!--
+        Личный канал Changes рисуется своей лентой (§8.3): элемент списка —
+        запись-источник, а не сообщение, поэтому ядровый ThreadView для него
+        не подходит. Он и не строится: `hasThreadView` для такого канала
+        погашен в патче модели `mail.discuss`.
+    -->
+    <t t-inherit="mail.Discuss.content" t-inherit-mode="extension">
+        <xpath expr="//t[@t-if='discuss.threadView']" position="after">
+            <t t-if="discuss.thread and discuss.thread.streamsChannelKind === 'changes'">
+                <StreamsChangesFeed
+                    class="o_Discuss_thread o_Discuss_streamsChangesFeed"
+                    threadLocalId="discuss.thread.localId"
+                />
+            </t>
+            <!--
+                Личный канал Notifications (§12.5): уведомления не
+                `mail.message`, лента у них своя — Received / Sent.
+            -->
+            <t t-if="discuss.thread and discuss.thread.streamsChannelKind === 'notifications'">
+                <StreamsNotifyFeed
+                    class="o_Discuss_thread o_Discuss_streamsNotifyFeed"
+                    threadLocalId="discuss.thread.localId"
+                />
+            </t>
+        </xpath>
+    </t>
+
+</templates>

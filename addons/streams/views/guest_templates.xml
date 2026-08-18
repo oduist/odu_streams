@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+
+    <!--
+        Самодостаточная публичная страница (Р5): без website, без OWL, без
+        web.assets_*. Гостю нельзя отдавать ни серверный дамп сессии
+        (`__session_info__`), ни единого байта бэкенд-кода.
+    -->
+    <template id="guest_layout" name="Streams Guest Layout">&lt;!DOCTYPE html&gt;
+        <html>
+            <head>
+                <meta charset="utf-8"/>
+                <meta name="viewport" content="width=device-width, initial-scale=1"/>
+                <meta name="robots" content="noindex, nofollow"/>
+                <title t-esc="page_title or 'Chat'"/>
+                <link rel="stylesheet" type="text/css"
+                      href="/streams/static/src/guest/guest.css"/>
+            </head>
+            <body>
+                <t t-out="0"/>
+            </body>
+        </html>
+    </template>
+
+    <template id="guest_confirm" name="Streams Guest Confirmation">
+        <t t-call="streams.guest_layout">
+            <t t-set="page_title">Chat invitation</t>
+            <div class="sg-card-wrap">
+                <div class="sg-card">
+                    <p class="sg-company" t-esc="company_name"/>
+                    <h1>You have been invited to the chat about
+                        <span t-esc="channel_name"/>
+                    </h1>
+                    <p class="sg-muted">This link works only once.</p>
+                    <form method="post" t-attf-action="/streams/guest/#{token}">
+                        <input type="hidden" name="csrf_token"
+                               t-att-value="request.csrf_token()"/>
+                        <button type="submit" class="sg-btn sg-btn-primary">
+                            Enter chat
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </t>
+    </template>
+
+    <template id="guest_gone" name="Streams Guest Link Expired">
+        <t t-call="streams.guest_layout">
+            <t t-set="page_title">Chat unavailable</t>
+            <div class="sg-card-wrap">
+                <div class="sg-card">
+                    <h1>This chat link is no longer active.</h1>
+                    <p class="sg-muted">Please contact your manager.</p>
+                </div>
+            </div>
+        </t>
+    </template>
+
+    <template id="guest_chat" name="Streams Guest Chat">
+        <t t-call="streams.guest_layout">
+            <t t-set="page_title" t-value="channel_name"/>
+            <div class="sg-app">
+                <header class="sg-header">
+                    <div class="sg-header-main">
+                        <h1 class="sg-channel" t-esc="channel_name"/>
+                        <div class="sg-members" id="sg-members"/>
+                    </div>
+                    <div class="sg-status" id="sg-status">Connected</div>
+                </header>
+                <main class="sg-messages" id="sg-messages"/>
+                <footer class="sg-composer">
+                    <div class="sg-pending" id="sg-pending"/>
+                    <div class="sg-composer-row">
+                        <textarea id="sg-input" rows="1"
+                                  placeholder="Write a message"/>
+                        <label class="sg-btn sg-btn-file" for="sg-file">Attach</label>
+                        <input type="file" id="sg-file" multiple="multiple"
+                               class="sg-hidden"/>
+                        <button type="button" id="sg-send"
+                                class="sg-btn sg-btn-primary">Send</button>
+                    </div>
+                    <div class="sg-error" id="sg-error"/>
+                </footer>
+            </div>
+            <!--
+                Конфигурация и стартовая порция ленты едут data-атрибутами, а
+                не инлайновым <script>: QWeb экранирует t-out, и JSON в теле
+                скрипта приехал бы поломанным.
+            -->
+            <div id="sg-config" class="sg-hidden"
+                 t-att-data-config="config" t-att-data-feed="feed"/>
+            <script type="text/javascript"
+                    src="/streams/static/src/guest/guest.js"/>
+        </t>
+    </template>
+
+</odoo>

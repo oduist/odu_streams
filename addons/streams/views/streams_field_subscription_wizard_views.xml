@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+
+    <record id="streams_field_subscription_wizard_form" model="ir.ui.view">
+        <field name="name">streams.field.subscription.wizard.form</field>
+        <field name="model">streams.field.subscription.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Subscribe to Changes">
+                <field name="res_model" invisible="1"/>
+                <field name="res_id" invisible="1"/>
+                <field name="available_field_ids" invisible="1"/>
+                <group>
+                    <field name="record_name"/>
+                </group>
+                <group>
+                    <field name="field_ids" nolabel="1"
+                        widget="many2many_tags"
+                        options="{'no_create': True, 'no_open': True}"
+                        domain="[('id', 'in', available_field_ids)]"
+                        placeholder="Pick the fields you want to watch"/>
+                </group>
+                <p class="text-muted">
+                    Changes of the selected fields appear in your personal
+                    Changes stream in Discuss. Clearing the list unsubscribes
+                    you from this record.
+                </p>
+                <footer>
+                    <button string="Save" name="action_save" type="object"
+                        class="btn-primary" data-hotkey="q"/>
+                    <button string="Unsubscribe" name="action_unsubscribe"
+                        type="object" class="btn-secondary"/>
+                    <button string="Cancel" class="btn-secondary"
+                        special="cancel" data-hotkey="z"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+
+</odoo>

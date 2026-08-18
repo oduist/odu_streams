@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <t t-inherit="mail.ThreadViewTopbar" t-inherit-mode="extension">
+        <xpath expr="//div[hasclass('o_ThreadViewTopbar_actions')]" position="inside">
+            <t t-if="threadViewTopbar.thread and threadViewTopbar.thread.streamsChannelKind === 'record'">
+                <button class="btn btn-sm btn-secondary o_ThreadViewTopbar_streamsNotify"
+                    type="button"
+                    title="Send a priority notification about this record"
+                    t-on-click="threadViewTopbar.onClickStreamsNotify"
+                >Notify</button>
+                <!--
+                    Invite customer (§9.2): выдать клиенту одноразовую ссылку
+                    на публичную страницу чата этой записи.
+                -->
+                <button class="btn btn-sm btn-secondary o_ThreadViewTopbar_streamsInvite"
+                    type="button"
+                    title="Give a customer access to this chat by a personal link"
+                    t-on-click="threadViewTopbar.onClickStreamsInvite"
+                >Invite customer</button>
+                <div class="o_ThreadViewTopbar_streamsFilters d-flex align-items-center">
+                    <t t-foreach="threadViewTopbar.streamsFilterItems()" t-as="streamsFilterItem" t-key="streamsFilterItem.key">
+                        <button class="btn btn-sm o_ThreadViewTopbar_streamsFilterButton"
+                            type="button"
+                            t-att-class="threadViewTopbar.thread.streamsFilters[streamsFilterItem.key] ? 'btn-primary o-active' : 'btn-secondary'"
+                            t-att-data-streams-filter="streamsFilterItem.key"
+                            t-att-title="streamsFilterItem.label"
+                            t-on-click="threadViewTopbar.onClickStreamsFilter"
+                        >
+                            <t t-esc="streamsFilterItem.label"/>
+                        </button>
+                    </t>
+                </div>
+            </t>
+        </xpath>
+    </t>
+
+</templates>

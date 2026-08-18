@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <t t-inherit="mail.DiscussSidebar" t-inherit-mode="extension">
+        <!--
+            Быстрый фильтр (§11.3) нужен всегда: ядро показывает его только
+            начиная с двадцатого запиненного канала.
+        -->
+        <xpath expr="//input[hasclass('o_DiscussSidebar_quickSearch')]/.." position="attributes">
+            <attribute name="t-if">true</attribute>
+        </xpath>
+        <!--
+            Каналы записей — отдельной группой внизу сайдбара (§11.3).
+            Личные Changes и Notifications живут в ядровой категории
+            Channels (решение пользователя 2026-08-18).
+        -->
+        <xpath expr="//DiscussSidebarCategory[hasclass('o_DiscussSidebar_categoryChat')]" position="after">
+            <DiscussSidebarCategory
+                class="o_DiscussSidebar_category o_DiscussSidebar_categoryStreams"
+                categoryLocalId="discuss.categoryStreams.localId"
+            />
+        </xpath>
+    </t>
+
+</templates>

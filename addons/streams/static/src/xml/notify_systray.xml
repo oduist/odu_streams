@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <t t-name="streams.NotifyMenu" owl="1">
+        <div class="o_StreamsNotifyMenu o_mail_systray_item"
+            title="Notifications"
+            t-on-click="onClick"
+        >
+            <i class="fa fa-lg fa-bell-o"/>
+            <span t-if="counter > 0"
+                class="badge badge-pill o_StreamsNotifyMenu_counter"
+            ><t t-esc="counterLabel"/></span>
+        </div>
+    </t>
+
+</templates>

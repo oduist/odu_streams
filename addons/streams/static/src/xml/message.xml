@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <t t-inherit="mail.Message" t-inherit-mode="extension">
+        <!--
+            В канале записи ссылка «on <документ>» бессмысленна: канал и есть
+            этот документ. У прочих проекций (Inbox, Starred) она остаётся.
+        -->
+        <xpath expr="//div[hasclass('o_Message_originThread')]/.." position="attributes">
+            <attribute name="t-if">threadView and messageView.message.originThread and messageView.message.originThread !== threadView.thread and !(threadView.thread and threadView.thread.streamsChannelKind === 'record' and threadView.thread.streamsResModel === messageView.message.originThread.model and threadView.thread.streamsResId === messageView.message.originThread.id)</attribute>
+        </xpath>
+    </t>
+
+</templates>

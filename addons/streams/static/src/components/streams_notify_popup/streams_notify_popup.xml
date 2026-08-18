@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <t t-name="streams.NotifyPopupCard" owl="1">
+        <div class="o_StreamsNotifyPopup"
+            t-att-class="{ 'o-sticky': popup.data.is_sticky }"
+            t-att-data-notify-id="popup.id"
+            t-on-mouseenter="onMouseEnter"
+            t-on-mouseleave="onMouseLeave"
+        >
+            <div class="o_StreamsNotifyPopup_header">
+                <span class="o_StreamsNotifyPopup_author">
+                    <t t-esc="popup.data.author and popup.data.author.name"/>
+                </span>
+                <span class="o_StreamsNotifyPopup_date">
+                    <t t-esc="formatDate(popup.data.date)"/>
+                </span>
+                <button class="btn btn-link o_StreamsNotifyPopup_close"
+                    type="button" aria-label="Close"
+                    t-att-data-notify-id="popup.id"
+                    t-on-click="onClickClose"
+                >&#215;</button>
+            </div>
+            <div t-if="popup.data.record_name" class="o_StreamsNotifyPopup_record">
+                <a href="#"
+                    t-att-data-res-model="popup.data.res_model"
+                    t-att-data-res-id="popup.data.res_id"
+                    t-on-click="onClickRecord"
+                ><t t-esc="popup.data.record_name"/></a>
+            </div>
+            <div class="o_StreamsNotifyPopup_body" t-raw="popup.data.body"/>
+            <div t-if="popup.data.voice" class="o_StreamsNotifyPopup_voice">
+                <audio controls="controls"
+                    t-att-src="voiceUrl(popup.data.voice.id)"/>
+                <span class="o_StreamsNotifyPopup_voiceDuration">
+                    <t t-esc="formatDuration(popup.data.voice.duration)"/>
+                </span>
+            </div>
+            <div t-if="popup.data.transcript" class="o_StreamsNotifyPopup_transcript">
+                <t t-esc="popup.data.transcript"/>
+            </div>
+            <div t-elif="popup.data.transcript_state === 'queued'"
+                class="o_StreamsNotifyPopup_transcript o-pending">
+                <i class="fa fa-circle-o-notch fa-spin"/> Transcribing...
+            </div>
+            <div t-if="popup.data.attachments.length" class="o_StreamsNotifyPopup_attachments">
+                <t t-foreach="popup.data.attachments" t-as="attachment" t-key="attachment.id">
+                    <a class="o_StreamsNotifyPopup_attachment"
+                        t-att-href="attachmentUrl(attachment.id)"
+                    ><i class="fa fa-paperclip"/> <t t-esc="attachment.name"/></a>
+                </t>
+            </div>
+            <div class="o_StreamsNotifyPopup_actions">
+                <button class="btn btn-sm btn-primary o_StreamsNotifyPopup_reply"
+                    type="button"
+                    t-att-data-notify-id="popup.id"
+                    t-on-click="onClickReply"
+                >Reply</button>
+            </div>
+        </div>
+    </t>
+
+    <t t-name="streams.NotifyPopupContainer" owl="1">
+        <div class="o_StreamsNotifyContainer">
+            <t t-foreach="transientPopups" t-as="popup" t-key="popup.id">
+                <t t-call="streams.NotifyPopupCard"/>
+            </t>
+            <t t-if="currentSticky">
+                <div class="o_StreamsNotifyContainer_stickyStack">
+                    <t t-set="popup" t-value="currentSticky"/>
+                    <t t-call="streams.NotifyPopupCard"/>
+                    <div t-if="stickyPopups.length > 1"
+                        class="o_StreamsNotifyContainer_paginator">
+                        <button class="btn btn-sm btn-link" type="button"
+                            t-on-click="onClickPrevious">&#8249;</button>
+                        <span class="o_StreamsNotifyContainer_pagerValue">
+                            <t t-esc="stickyPosition"/> / <t t-esc="stickyPopups.length"/>
+                        </span>
+                        <button class="btn btn-sm btn-link" type="button"
+                            t-on-click="onClickNext">&#8250;</button>
+                    </div>
+                </div>
+            </t>
+        </div>
+    </t>
+
+</templates>

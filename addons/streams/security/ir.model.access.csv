@@ -1,0 +1,8 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_mail_field_subscription_user,mail.field.subscription user,model_mail_field_subscription,base.group_user,1,1,1,1
+access_streams_field_subscription_wizard_user,streams.field.subscription.wizard user,model_streams_field_subscription_wizard,base.group_user,1,1,1,1
+access_mail_notify_user,mail.notify user,model_mail_notify,base.group_user,1,1,1,1
+access_mail_notify_recipient_user,mail.notify.recipient user,model_mail_notify_recipient,base.group_user,1,1,1,1
+access_mail_channel_external_participant_system,mail.channel.external.participant system,model_mail_channel_external_participant,base.group_system,1,1,1,1
+access_streams_guest_invite_wizard_user,streams.guest.invite.wizard user,model_streams_guest_invite_wizard,base.group_user,1,1,1,1
+access_streams_guest_invite_wizard_line_user,streams.guest.invite.wizard.line user,model_streams_guest_invite_wizard_line,base.group_user,1,1,1,1

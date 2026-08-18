@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <t t-name="streams.NotifyFeed" owl="1">
+        <div class="o_StreamsNotifyFeed">
+            <div class="o_StreamsNotifyFeed_topbar">
+                <button class="btn btn-sm o_StreamsNotifyFeed_boxButton"
+                    type="button" data-box="received"
+                    t-att-class="state.box === 'received' ? 'btn-primary o-active' : 'btn-secondary'"
+                    t-on-click="onClickBox"
+                >Received</button>
+                <button class="btn btn-sm o_StreamsNotifyFeed_boxButton"
+                    type="button" data-box="sent"
+                    t-att-class="state.box === 'sent' ? 'btn-primary o-active' : 'btn-secondary'"
+                    t-on-click="onClickBox"
+                >Sent</button>
+                <button class="btn btn-sm btn-secondary o_StreamsNotifyFeed_newButton"
+                    type="button" t-on-click="onClickNew"
+                >New notification</button>
+                <button class="btn btn-sm btn-link o_StreamsNotifyFeed_muteButton"
+                    type="button"
+                    t-att-title="state.isSoundMuted ? 'Notification sound is muted' : 'Mute the notification sound'"
+                    t-on-click="onClickMute"
+                >
+                    <i t-att-class="state.isSoundMuted ? 'fa fa-volume-off' : 'fa fa-volume-up'"/>
+                </button>
+            </div>
+
+            <div class="o_StreamsNotifyFeed_list">
+                <t t-if="state.isLoading">
+                    <div class="o_StreamsNotifyFeed_loading">
+                        <i class="fa fa-circle-o-notch fa-spin"/> Loading notifications...
+                    </div>
+                </t>
+                <t t-elif="state.items.length === 0">
+                    <div class="o_StreamsNotifyFeed_empty">
+                        No notifications yet. Use the Notify button on a record
+                        or New notification here.
+                    </div>
+                </t>
+                <t t-else="">
+                    <div class="o_StreamsNotifyFeed_item"
+                        t-foreach="state.items" t-as="item" t-key="item.id"
+                        t-att-data-notify-id="item.id"
+                        t-att-class="{ 'o-unread': state.box === 'received' and !item.read_date }"
+                    >
+                        <div class="o_StreamsNotifyFeed_itemHeader">
+                            <span class="o_StreamsNotifyFeed_author">
+                                <t t-esc="item.author and item.author.name"/>
+                            </span>
+                            <span class="o_StreamsNotifyFeed_date">
+                                <t t-esc="formatDate(item.date)"/>
+                            </span>
+                            <a t-if="item.record_name" href="#"
+                                class="o_StreamsNotifyFeed_record"
+                                t-att-data-res-model="item.res_model"
+                                t-att-data-res-id="item.res_id"
+                                t-on-click="onClickRecord"
+                            ><t t-esc="item.record_name"/></a>
+                        </div>
+                        <div class="o_StreamsNotifyFeed_body" t-raw="item.body"/>
+                        <div t-if="item.voice" class="o_StreamsNotifyFeed_voice">
+                            <audio controls="controls" t-att-src="voiceUrl(item.voice.id)"/>
+                            <span class="o_StreamsNotifyFeed_voiceDuration">
+                                <t t-esc="formatDuration(item.voice.duration)"/>
+                            </span>
+                        </div>
+                        <div t-if="item.transcript" class="o_StreamsNotifyFeed_transcript">
+                            <t t-esc="item.transcript"/>
+                        </div>
+                        <div t-elif="item.transcript_state === 'queued'"
+                            class="o_StreamsNotifyFeed_transcript o-pending">
+                            <i class="fa fa-circle-o-notch fa-spin"/> Transcribing...
+                        </div>
+                        <div t-if="item.attachments.length" class="o_StreamsNotifyFeed_attachments">
+                            <t t-foreach="item.attachments" t-as="attachment" t-key="attachment.id">
+                                <a class="o_StreamsNotifyFeed_attachment"
+                                    t-att-href="attachmentUrl(attachment.id)"
+                                ><i class="fa fa-paperclip"/> <t t-esc="attachment.name"/></a>
+                            </t>
+                        </div>
+                        <t t-if="state.box === 'sent'">
+                            <div class="o_StreamsNotifyFeed_recipients">
+                                <t t-foreach="item.recipients or []" t-as="recipient" t-key="recipient.user_id">
+                                    <div class="o_StreamsNotifyFeed_recipient">
+                                        <span class="o_StreamsNotifyFeed_recipientName">
+                                            <t t-esc="recipient.name"/>
+                                        </span>
+                                        <span t-if="recipient.read_date" class="o_StreamsNotifyFeed_read">
+                                            Read at <t t-esc="formatDate(recipient.read_date)"/>
+                                        </span>
+                                        <span t-else="" class="o_StreamsNotifyFeed_unread">Unread</span>
+                                    </div>
+                                </t>
+                            </div>
+                        </t>
+                        <t t-else="">
+                            <div class="o_StreamsNotifyFeed_actions">
+                                <button class="btn btn-sm btn-link o_StreamsNotifyFeed_reply"
+                                    type="button"
+                                    t-att-data-notify-id="item.id"
+                                    t-on-click="onClickReply"
+                                >Reply</button>
+                            </div>
+                        </t>
+                    </div>
+                    <div t-if="state.hasMore" class="o_StreamsNotifyFeed_more">
+                        <button class="btn btn-sm btn-link" type="button"
+                            t-on-click="onClickLoadMore"
+                        >Load more</button>
+                    </div>
+                </t>
+            </div>
+        </div>
+    </t>
+
+</templates>

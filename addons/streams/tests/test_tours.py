@@ -18,7 +18,12 @@ class TestStreamsTours(HttpCase):
         cls.admin = cls.env.ref('base.user_admin')
 
     def test_chatter_tour(self):
-        """Кнопки чаттера и оба внутренних потока (§11.1)."""
+        """Кнопки чаттера и обе отправки из футера композера (§11.1).
+
+        Фаза 9.5: композер открыт всегда, поток выбирается кнопкой
+        отправки — Send даёт `mail.mt_comment`, Note `mail.mt_note`.
+        Поэтому тур проверяет не только тела, но и подтипы.
+        """
         record = self.env['res.partner'].create({'name': 'Streams Chatter Tour'})
         self.start_tour(
             '/odoo/res.partner/%s' % record.id,
@@ -26,13 +31,20 @@ class TestStreamsTours(HttpCase):
             login='admin',
         )
         messages = record.message_ids.sorted('id')
-        bodies = [message.body for message in messages]
-        self.assertTrue(
-            any('Internal comment from tour' in body for body in bodies),
-            'комментарий из тура попал в чаттер записи')
-        self.assertTrue(
-            any('Internal note from tour' in body for body in bodies),
-            'заметка из тура попала в чаттер записи')
+        comment = messages.filtered(
+            lambda m: 'Internal comment from tour' in (m.body or ''))
+        note = messages.filtered(
+            lambda m: 'Internal note from tour' in (m.body or ''))
+        self.assertEqual(
+            len(comment), 1, 'комментарий из тура попал в чаттер записи')
+        self.assertEqual(
+            len(note), 1, 'заметка из тура попала в чаттер записи')
+        self.assertEqual(
+            comment.subtype_id, self.env.ref('mail.mt_comment'),
+            'кнопка Send отправила комментарий')
+        self.assertEqual(
+            note.subtype_id, self.env.ref('mail.mt_note'),
+            'кнопка Note отправила заметку')
         channel = self.env['discuss.channel'].sudo().search([
             ('channel_kind', '=', 'record'),
             ('res_model', '=', 'res.partner'),

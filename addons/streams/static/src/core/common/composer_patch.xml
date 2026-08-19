@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<templates xml:space="preserve">
+
+    <!--
+        Вторая кнопка отправки в футере композера чаттера записи
+        (редизайн топбара, решение пользователя 2026-08-19).
+
+        Send (ядровая) шлёт набранное комментарием `mail.mt_comment`,
+        Note — тот же текст заметкой `mail.mt_note`. Это НЕ переключатель
+        режима: подтип выбирается в момент клика
+        (`composer_patch.js`, `streamsSendAsNote`).
+
+        Реестр `mail.composer/actions` здесь не подходит: он рисует
+        иконки в панелях quick/other у поля ввода, а по ТЗ Note стоит
+        рядом с Send — то есть в блоке футера, куда action-панели не
+        попадают.
+    -->
+    <t t-inherit="mail.Composer" t-inherit-mode="extension">
+        <xpath expr="//t[@t-call='mail.Composer.sendButton']" position="after">
+            <button t-if="streamsShowsNoteButton"
+                class="o-streams-Composer-note btn btn-secondary btn-sm ms-1"
+                t-att-disabled="isSendButtonDisabled"
+                data-hotkey="shift+m"
+                title="Log an internal note"
+                aria-label="Note"
+                t-on-click="() => this.streamsSendAsNote()">Note</button>
+        </xpath>
+    </t>
+
+    <!--
+        Хоткеи ушли из топбара сюда вместе с потоками.
+
+        В ядре 19 «m» / «shift+m» висели на кнопках Send message / Log
+        note чаттера и означали «открыть композер»; композер теперь открыт
+        всегда, поэтому те же сочетания означают «отправить»
+        (комментарием / заметкой). Регистрация DOM-хоткеев ядра
+        (`web/core/hotkeys/hotkey_service.js`, `getDomRegistrations`) идёт
+        с `bypassEditableProtection: true`, так что alt+M срабатывает и с
+        курсором в поле ввода композера.
+
+        Условие то же, что у кнопки Note: в каналах Discuss и окнах чата
+        ядровая Send остаётся без хоткея.
+    -->
+    <t t-inherit="mail.Composer.sendButton" t-inherit-mode="extension">
+        <xpath expr="//button[hasclass('o-mail-Composer-send')]" position="attributes">
+            <attribute name="t-att-data-hotkey">streamsShowsNoteButton ? 'm' : undefined</attribute>
+        </xpath>
+    </t>
+
+</templates>

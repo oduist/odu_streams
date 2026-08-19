@@ -1,7 +1,7 @@
 # -*- encoding: utf-8 -*-
 {
     'name': 'Streams',
-    'version': '19.0.1.6.0',
+    'version': '19.0.1.7.0',
     'category': 'Discuss',
     'summary': 'Record channels, message streams and explicit-only following',
     'description': """

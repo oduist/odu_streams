@@ -7,8 +7,10 @@ patch(Composer.prototype, {
     /**
      * Композер канала записи сейчас в режиме заметки (C3).
      *
-     * У чаттера свой переключатель — ядровые кнопки Comment/Note, поэтому
-     * там режим берётся из `props.type` и это поле не используется.
+     * Персистентный переключатель канала (`discuss/core/common/
+     * streams_composer_actions.js`). В чаттере записи его нет: там режим
+     * берётся из `props.type`, а заметка отправляется разовым флагом
+     * `streamsNoteRequested` (кнопка Note футера, фаза 9.5).
      */
     get streamsIsNote() {
         return Boolean(
@@ -40,9 +42,50 @@ patch(Composer.prototype, {
         return super.placeholder;
     },
 
+    /**
+     * Показывать ли кнопку Note рядом с ядровой Send (фаза 9.5).
+     *
+     * Только композер чаттера записи: `env.inChatter` ставит сам чаттер
+     * (`childSubEnv`), поэтому каналы Discuss, окна чата и наш диалог
+     * Notify сюда не попадают. Режим правки сообщения (`composer.message`)
+     * исключён — там подтип уже проставлен, менять его нечем; режим
+     * `note` (его включает ядровый message action «Reply») тоже: в нём
+     * заметку шлёт сама Send.
+     */
+    get streamsShowsNoteButton() {
+        return Boolean(
+            this.env.inChatter &&
+                !this.props.composer.message &&
+                this.props.type === "message" &&
+                this.thread &&
+                this.thread.model !== "discuss.channel"
+        );
+    },
+
+    /**
+     * Отправить набранное заметкой (кнопка Note футера, фаза 9.5).
+     *
+     * Не режим, а вторая отправка: флаг живёт ровно на время вызова
+     * `sendMessage` и нигде не сохраняется. Он транзиентный намеренно —
+     * состояние «композер сейчас в заметках» пользователю не обещано, обе
+     * кнопки доступны всегда и шлют один и тот же набранный текст.
+     *
+     * `postData` читается синхронно внутри `processMessage`, который
+     * `sendMessage` дожидается, — к моменту `finally` подтип уже уехал в
+     * запрос.
+     */
+    async streamsSendAsNote() {
+        this.streamsNoteRequested = true;
+        try {
+            await this.sendMessage();
+        } finally {
+            this.streamsNoteRequested = false;
+        }
+    },
+
     get postData() {
         const postData = super.postData;
-        if (this.streamsIsNote) {
+        if (this.streamsIsNote || this.streamsNoteRequested) {
             // `isNote` — единственная ручка выбора подтипа в ядре:
             // `Store.getMessagePostParams` превращает его в
             // `subtype_xmlid: 'mail.mt_note'`, а `discuss.channel.message_post`

@@ -4,30 +4,35 @@
     <t t-inherit="mail.Chatter" t-inherit-mode="extension">
 
         <!--
-            Ядровая Send message → Comment (§11.1, B1).
+            Ядровые Send message / Log note убраны из топбара
+            (редизайн фазы 9.5, решение пользователя 2026-08-19).
 
-            Поведение кнопки не меняется: это тот же ядровый композер
-            `type='message'` с подтипом `mail.mt_comment`. Меняются только
-            подпись и тултип: в streams этот поток — внутреннее общение
-            сотрудников, письма из него не уходят (§7). Классы ядра
-            (`o-mail-Chatter-sendMessage`) сохранены — на них опираются
-            тесты ядра и сторонние модули (B8).
+            Их единственной работой было открыть композер — а он теперь
+            открыт всегда (`chatter_patch.js`), и выбор потока переехал в
+            его футер: Send (ядровая) шлёт комментарий, Note (наша,
+            `core/common/composer_patch.xml`) — заметку.
+
+            Скрываем через `t-if="false"`, а не удаляем узлы: xpath'ы,
+            которые целятся в эти кнопки, продолжают применяться — и
+            сторонние (`position="after"` у cloud_storage и подобных), и
+            наш собственный ниже. Удаление узла ломает их на этапе сборки
+            шаблона, то есть обрушивает весь чаттер.
         -->
         <xpath expr="//button[hasclass('o-mail-Chatter-sendMessage')]" position="attributes">
-            <attribute name="title">Post an internal comment</attribute>
+            <attribute name="t-if">false</attribute>
         </xpath>
-        <xpath expr="//button[hasclass('o-mail-Chatter-sendMessage')]" position="replace" mode="inner">Comment</xpath>
-
-        <!-- Ядровая Log note → Note (§11.1, B2). -->
         <xpath expr="//button[hasclass('o-mail-Chatter-logNote')]" position="attributes">
-            <attribute name="title">Log an internal note</attribute>
+            <attribute name="t-if">false</attribute>
         </xpath>
-        <xpath expr="//button[hasclass('o-mail-Chatter-logNote')]" position="replace" mode="inner">Note</xpath>
 
         <!--
-            Send Message / Notify / Changes / Invite customer (§11.1).
+            Message / Notify / Changes / Invite (§11.1).
 
-            Порядок и тултипы — как в клиенте 15 (`legacy15/xml/chatter_topbar.xml`).
+            Порядок и тултипы — как в клиенте 15 (`legacy15/xml/chatter_topbar.xml`);
+            подписи укорочены фазой 9.5, чтобы топбар помещался в боковую
+            раскладку чаттера. Классы `o-streams-*` НЕ трогаем: на них
+            опираются тесты и туры.
+
             Все четыре требуют сохранённую запись: до неё у треда нет id, а
             все действия адресуются паре (модель, id).
         -->
@@ -37,7 +42,7 @@
                 t-if="state.thread.id"
                 t-att-disabled="!state.thread.canPostMessage"
                 title="Send an external message to customers"
-                t-on-click="() => this.onClickStreamsSendMessage()">Send Message</button>
+                t-on-click="() => this.onClickStreamsSendMessage()">Message</button>
             <button class="o-streams-Chatter-notify btn btn-secondary text-nowrap me-1"
                 t-att-class="{ 'my-2': !props.compactHeight }"
                 t-if="state.thread.id"
@@ -55,7 +60,7 @@
                 t-if="state.thread.id"
                 t-att-disabled="isDisabled"
                 title="Give a customer access to this chat by a personal link"
-                t-on-click="() => this.onClickStreamsInvite()">Invite customer</button>
+                t-on-click="() => this.onClickStreamsInvite()">Invite</button>
         </xpath>
 
         <!--

@@ -14,17 +14,116 @@ import { Chatter } from "@mail/chatter/web_portal/chatter";
 import { patch } from "@web/core/utils/patch";
 
 /**
- * Кнопки чаттера записи (§11.1).
+ * Порядок применения патчей: НАШ идёт последним.
  *
- * Ядровые Send message / Log note переименованы в шаблоне
- * (`chatter_patch.xml`) — классы `o-mail-Chatter-sendMessage` и
- * `o-mail-Chatter-logNote` сохранены: на них опираются тесты ядра и
- * сторонние модули. Их поведение не меняется: Comment — это ядровый
- * композер `type='message'` (подтип `mail.mt_comment`), Note — ядровый
- * `type='note'`. Внешняя переписка ушла в отдельную кнопку Send Message
- * (решение Р2 фазы 8).
+ * Класс `Chatter` объявлен в `@mail/chatter/web_portal/chatter`, но всё
+ * поведение чаттера записи ядро добавляет отдельным патчем —
+ * `@mail/chatter/web/chatter_patch`. Импорта самого класса недостаточно:
+ * загрузчик Odoo выполняет модуль, как только готовы ЕГО зависимости, а у
+ * ядрового патча их много (Activity, ScheduledMessage, RecipientsInput…),
+ * поэтому он выполняется ПОЗЖЕ нас. `patch` же оставляет в живых
+ * последнего: ядровые `toggleComposer` и `onClickSearch` не зовут
+ * `super`, так что наши одноимённые методы молча переставали вызываться
+ * (композер закрывался после отправки).
+ *
+ * Побочный импорт — ядровая идиома ровно для этого случая
+ * (`mail/chatter/web/thread_model_patch.js`, `crm_livechat/.../thread_actions.js`).
+ */
+import "@mail/chatter/web/chatter_patch";
+
+/**
+ * Кнопки чаттера записи (§11.1, редизайн топбара фазой 9.5).
+ *
+ * Ядровые Send message / Log note скрыты в шаблоне (`chatter_patch.xml`):
+ * их единственной работой было открыть композер, а он теперь открыт
+ * всегда. Отправка комментарием и заметкой переехала в футер композера —
+ * кнопки Send (ядровая) и Note (наша, `core/common/composer_patch.*`).
+ * Топбар записи: Message · Notify · Changes · Invite.
  */
 patch(Chatter.prototype, {
+    // ------------------------------------------------------------
+    // ВСЕГДА ОТКРЫТЫЙ КОМПОЗЕР (решение пользователя 2026-08-19)
+    // ------------------------------------------------------------
+
+    /**
+     * Держать ли композер этого чаттера открытым.
+     *
+     * Условие — сохранённая запись, и берётся оно из треда, а не из
+     * `props.threadId`: `changeThread` вызывается из `onWillUpdateProps`,
+     * когда `this.props` ещё старые. У несохранённой записи тред
+     * транзиентный (без id), отправлять в него нечего, а ядровый путь
+     * «открыть композер → `saveRecord`» (`toggleComposer`) мы оставляем
+     * ядру нетронутым.
+     */
+    get streamsKeepsComposerOpen() {
+        return Boolean(this.state.thread?.id);
+    },
+
+    /** Режим всегда открытого композера — внутренний комментарий. */
+    get streamsDefaultComposerType() {
+        return "message";
+    },
+
+    /**
+     * Открыть композер сразу, как только у треда появился id.
+     *
+     * `changeThread` — единственная точка входа: её зовут и `_onMounted`,
+     * и `onWillUpdateProps` при смене записи. Ядро в этом же методе
+     * обнуляет `composerType` для `threadId === false` — эту ветку не
+     * трогаем.
+     */
+    changeThread(threadModel, threadId) {
+        super.changeThread(...arguments);
+        if (this.streamsKeepsComposerOpen) {
+            this.state.composerType = this.streamsDefaultComposerType;
+        }
+    },
+
+    /**
+     * Композер чаттера записи не закрывается.
+     *
+     * Ядро зовёт `toggleComposer()` без аргументов там, где раньше это
+     * значило «закрыть»: после отправки (`onPostCallback`) и после
+     * закрытия полного композера (`onCloseFullComposerCallback`). У нас
+     * это «вернуться в режим комментария». `force` обязателен: без него
+     * повторный вызов с текущим режимом закрыл бы композер (ядро
+     * трактует его как тумблер).
+     *
+     * Режим `note` сюда приходит от ядрового message action «Reply»
+     * (`mail/static/src/core/common/message_actions.js`) — его сохраняем
+     * как есть, до следующей отправки.
+     */
+    toggleComposer(mode = false, options = {}) {
+        if (!this.streamsKeepsComposerOpen) {
+            return super.toggleComposer(...arguments);
+        }
+        return super.toggleComposer(mode || this.streamsDefaultComposerType, {
+            ...options,
+            force: true,
+        });
+    },
+
+    /**
+     * Поиск по сообщениям прячет композер — вернуть его при закрытии.
+     *
+     * Ядро гасит `composerType` прямо в `onClickSearch`, а закрыть поиск
+     * можно ещё и крестиком внутри `SearchMessageInput` (`closeSearch`).
+     * Патчим обе точки, иначе композер исчезает навсегда.
+     */
+    onClickSearch() {
+        super.onClickSearch(...arguments);
+        if (!this.state.isSearchOpen && this.streamsKeepsComposerOpen) {
+            this.state.composerType = this.streamsDefaultComposerType;
+        }
+    },
+
+    closeSearch() {
+        super.closeSearch(...arguments);
+        if (!this.state.composerType && this.streamsKeepsComposerOpen) {
+            this.state.composerType = this.streamsDefaultComposerType;
+        }
+    },
+
     /**
      * Показывать ли строку получателей «To: …» над композером.
      *

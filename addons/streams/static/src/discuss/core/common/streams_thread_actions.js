@@ -82,3 +82,27 @@ registerThreadAction("streams-schedule-activity", {
     sequence: 28,
     sequenceGroup: 20,
 });
+
+/**
+ * «Открыть запись» — переход из канала к его документу (§11.2).
+ *
+ * Единственное действие, которое НЕ прячется в мини-меню канала в
+ * сайдбаре (`isDiscussSidebarChannelActions`): попасть на запись должно
+ * быть можно и не открывая канал. Отсюда и отдельное условие, и то, что
+ * пункт стоит первым в своей группе — в дропдауне сайдбара он оказывается
+ * рядом с ядровыми Invite People / Advanced Settings.
+ *
+ * `store.openDocument` (`mail/static/src/core/common/store_service.js`)
+ * вместо своего act_window: форма записи открывается ровно так же, как из
+ * ссылки под сообщением в Inbox.
+ */
+registerThreadAction("streams-open-record", {
+    condition: ({ thread }) =>
+        thread?.channel_kind === "record" && Boolean(thread.res_model) && Boolean(thread.res_id),
+    icon: "fa fa-fw fa-external-link",
+    name: _t("Open Record"),
+    open: ({ store, thread }) =>
+        store.openDocument({ model: thread.res_model, id: thread.res_id }),
+    sequence: 24,
+    sequenceGroup: 20,
+});

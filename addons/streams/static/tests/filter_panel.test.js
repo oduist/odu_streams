@@ -17,6 +17,21 @@ import { createStreamsRecordChannel, defineStreamsModels } from "./streams_test_
 describe.current.tags("desktop");
 defineStreamsModels();
 
+/**
+ * Дождаться, пока канал в Discuss догрузится.
+ *
+ * `openDiscuss` возвращает управление, как только на экране появился
+ * `.o-mail-Discuss`, а шапка канала (и кнопки действий в ней) собирается
+ * ещё раз, когда доедет `/discuss/channel/messages`. Клик по кнопке,
+ * которую Owl в этот момент заменяет, теряется вместе со старым узлом:
+ * обработчик ищется по узлу, а его уже нет в дереве. Приветствие пустого
+ * канала рисуется именно по загруженной ленте — это и есть признак того,
+ * что перерисовки кончились.
+ */
+async function waitForChannelLoaded(name = "John Doe") {
+    await contains("p", { text: `This is the start of the #${name} channel` });
+}
+
 test("панель фильтров: пять тумблеров в порядке клиента 15", async () => {
     const pyEnv = await startServer();
     const partnerId = pyEnv["res.partner"].create({ name: "John Doe" });
@@ -27,6 +42,7 @@ test("панель фильтров: пять тумблеров в порядк
     });
     await start();
     await openDiscuss(channelId);
+    await waitForChannelLoaded();
     await click("button[title='Streams']");
     await contains(".o-streams-FilterPanel");
     await contains(".o-streams-FilterPanel-toggle", { count: 5 });
@@ -82,6 +98,7 @@ test("клик по тумблеру сохраняет фильтры и пер
     });
     await start();
     await openDiscuss(channelId);
+    await waitForChannelLoaded();
     await click("button[title='Streams']");
     await contains(".o-streams-FilterPanel-toggle", { count: 5 });
     const fetchCountBefore = fetchCount;

@@ -378,6 +378,57 @@ class TestStreamsChanges(common.TransactionCase):
         self.assertEqual(len(feed), 50)
 
     # 10
+    def test_10a_changes_feed_cursor(self):
+        """Курсорная пагинация ленты (фаза 8, `with_cursor=True`).
+
+        Отсев по подписке идёт ПОСЛЕ выборки страницы, поэтому страница
+        может выйти пустой при непустом хвосте. Курсор — минимальный
+        просмотренный `last_message_id` до отсева — обязан вести сквозь
+        такие страницы, а `has_more` — не гаснуть на них.
+        """
+        subscribed = self._make_partner('Cursor Subscribed')
+        skipped = self._make_partner('Cursor Skipped')
+        self._subscribe(subscribed, self.watcher, self.field_email)
+        self._subscribe(skipped, self.watcher, self.field_email)
+        self._flush_tracking()
+        # значения обязаны отличаться от выставленных в `_make_partner`,
+        # иначе write не даст tracking-сообщения вовсе
+        subscribed.write({'email': 'cursor.subscribed.v2@example.com'})
+        self._flush_tracking()
+        skipped.write({'email': 'cursor.skipped.v2@example.com'})
+        self._flush_tracking()
+        # снять подписку ПОСЛЕ маршрутизации: сообщение уже подшито к
+        # каналу (цель в выборке останется), но лента такую запись целиком
+        # отсеет — ровно случай «пустая страница при непустом хвосте»
+        skipped.with_user(self.watcher).streams_set_field_subscription([])
+        self._flush_tracking()
+
+        # дефолтная форма — по-прежнему голый список (мобильный контракт)
+        plain = self._feed(self.watcher)
+        self.assertIsInstance(plain, list)
+
+        # страница из одной цели: самая свежая (skipped) отсеется целиком,
+        # но курсор и has_more обязаны позволить дойти до subscribed
+        page = self._feed(self.watcher, limit=1, with_cursor=True)
+        self.assertEqual(page['items'], [],
+                         'цель без подписки на изменённое поле отсеяна')
+        self.assertTrue(page['has_more'],
+                        'сырая страница полна — хвост не просмотрен')
+        self.assertTrue(page['cursor'])
+
+        page = self._feed(self.watcher, limit=1, with_cursor=True,
+                          before_id=page['cursor'])
+        self.assertEqual(
+            [item['res_id'] for item in page['items']], [subscribed.id],
+            'курсор провёл через отсеянную страницу')
+
+        # хвост кончился: курсор либо None, либо доводит до пустой
+        # страницы без has_more
+        if page['has_more']:
+            page = self._feed(self.watcher, limit=30, with_cursor=True,
+                              before_id=page['cursor'])
+            self.assertFalse(page['has_more'])
+
     def test_10_changes_feed_is_private(self):
         partner = self._make_partner('Changes Private')
         self._subscribe(partner, self.watcher, self.field_email)

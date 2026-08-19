@@ -65,6 +65,11 @@ export class StreamsChangesFeed extends Component {
         this._restoreScrollTop = undefined;
         /** Сколько страниц показано — живой рефреш не должен их терять. */
         this._pageCount = 1;
+        /**
+         * Серверный курсор пагинации: минимальный просмотренный сервером
+         * `last_message_id` (до отсева по подписке/правам). null — конец.
+         */
+        this._cursor = null;
 
         onWillStart(() => this.load(this.props.thread));
         onWillUpdateProps((nextProps) => {
@@ -153,10 +158,13 @@ export class StreamsChangesFeed extends Component {
     async load(thread) {
         this.state.isLoading = true;
         try {
-            const items = await this._fetch(thread, { limit: STREAMS_CHANGES_PAGE_SIZE });
+            const { items, cursor, has_more } = await this._fetch(thread, {
+                limit: STREAMS_CHANGES_PAGE_SIZE,
+            });
             this._pageCount = 1;
+            this._cursor = cursor;
             this.state.items = items;
-            this.state.hasMore = items.length > 0;
+            this.state.hasMore = has_more;
         } finally {
             this.state.isLoading = false;
         }
@@ -170,20 +178,21 @@ export class StreamsChangesFeed extends Component {
      * доскроллу — самозагружающийся хвост гасил бы непрочитанное.
      */
     async onClickLoadMore() {
-        if (this.state.isLoadingMore || !this.state.items.length) {
+        if (this.state.isLoadingMore || !this._cursor) {
             return;
         }
-        const beforeId = this.state.items.at(-1).last_message_id;
         this.state.isLoadingMore = true;
         try {
-            const items = await this._fetch(this.props.thread, {
-                limit: STREAMS_CHANGES_PAGE_SIZE,
-                beforeId,
-            });
+            // курсор сервера, а не `last_message_id` последнего элемента:
             // сервер отсеивает записи, потерявшие подписку или доступ
-            // (§8.4), поэтому «страница короче лимита» ещё не означает
-            // конец ленты; концом считаем только пустой ответ
-            this.state.hasMore = items.length > 0;
+            // (§8.4), уже ПОСЛЕ выборки страницы, поэтому элементы могут
+            // кончиться раньше, чем просмотренный им хвост
+            const { items, cursor, has_more } = await this._fetch(this.props.thread, {
+                limit: STREAMS_CHANGES_PAGE_SIZE,
+                beforeId: this._cursor,
+            });
+            this._cursor = cursor;
+            this.state.hasMore = has_more;
             if (items.length) {
                 this._pageCount++;
                 this.state.items = [...this.state.items, ...items];
@@ -217,11 +226,12 @@ export class StreamsChangesFeed extends Component {
      */
     async reload() {
         this._restoreScrollTop = this.rootRef.el?.scrollTop;
-        const items = await this._fetch(this.props.thread, {
+        const { items, cursor, has_more } = await this._fetch(this.props.thread, {
             limit: STREAMS_CHANGES_PAGE_SIZE * this._pageCount,
         });
+        this._cursor = cursor;
         this.state.items = items;
-        this.state.hasMore = items.length > 0;
+        this.state.hasMore = has_more;
     }
 
     /**
@@ -232,20 +242,26 @@ export class StreamsChangesFeed extends Component {
      */
     async _fetch(thread, { limit, beforeId } = {}) {
         if (!thread?.id) {
-            return [];
+            return { items: [], cursor: null, has_more: false };
         }
-        const kwargs = { limit };
+        // курсорная форма ответа (`with_cursor`): пагинация должна
+        // переживать страницы, целиком отсеянные подпиской/правами
+        const kwargs = { limit, with_cursor: true };
         if (beforeId) {
             kwargs.before_id = beforeId;
         }
         // silent: лента тянется фоном, спиннер у неё свой
-        const items = await this.orm.silent.call(
+        const result = await this.orm.silent.call(
             "discuss.channel",
             "streams_changes_feed",
             [[thread.id]],
             kwargs
         );
-        return items || [];
+        return {
+            items: result?.items || [],
+            cursor: result?.cursor ?? null,
+            has_more: Boolean(result?.has_more),
+        };
     }
 
     // ------------------------------------------------------------------

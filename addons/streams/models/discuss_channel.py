@@ -266,25 +266,47 @@ class DiscussChannel(models.Model):
             readable.update((res_model, res_id) for res_id in allowed.ids)
         return readable
 
-    def streams_changes_feed(self, limit=30, before_id=None):
+    def streams_changes_feed(self, limit=30, before_id=None,
+                             with_cursor=False):
         """Лента личного канала Changes (§8.3).
 
         Фильтрация по подписке и правам — серверная: клиенту нельзя
         отдавать `tracking_value` полей, на которые пользователь не
         подписан, и тем более записей, которые он читать не вправе.
+
+        `with_cursor=True` (веб-клиент, фаза 8) меняет форму ответа на
+        `{'items', 'cursor', 'has_more'}`. Курсор нужен потому, что отсев
+        по подписке и правам идёт ПОСЛЕ выборки страницы: «страница короче
+        лимита» не означает конец ленты, а страница может выйти и пустой
+        при непустом хвосте. `cursor` — минимальный просмотренный
+        `last_message_id` ДО отсева: с ним клиент продолжает листать даже
+        через полностью отфильтрованные страницы. Дефолтная форма (голый
+        список) сохранена для мобильного API.
         """
         channel = self._streams_check_changes_owner()
         targets = channel._streams_change_targets(
             limit=limit, before_id=before_id)
+        # курсор и признак «есть ещё» считаются по сырой странице:
+        # `limit` применяется до отсева, поэтому ровно `limit` целей —
+        # признак непросмотренного хвоста
+        cursor = min(
+            (last_id for _m, _r, last_id in targets), default=None)
+        has_more = bool(limit) and len(targets) >= limit
+
+        def wrap(items):
+            if not with_cursor:
+                return items
+            return {'items': items, 'cursor': cursor, 'has_more': has_more}
+
         if not targets:
-            return []
+            return wrap([])
         readable = self._streams_readable_targets(
             [(res_model, res_id) for res_model, res_id, _last in targets])
         targets = [
             target for target in targets if (target[0], target[1]) in readable
         ]
         if not targets:
-            return []
+            return wrap([])
         subscriptions = self.env['mail.field.subscription']._streams_find_by_targets(
             self._streams_targets_by_model(targets), user=self.env.user)
         subscribed_fields = {
@@ -348,7 +370,7 @@ class DiscussChannel(models.Model):
                 'unread': last_id > seen_message_id,
                 'changes': changes,
             })
-        return result
+        return wrap(result)
 
     @api.model
     def _streams_targets_by_model(self, targets):

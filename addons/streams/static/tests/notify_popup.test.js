@@ -1,7 +1,6 @@
 import {
     click,
     contains,
-    defineMailModels,
     listenStoreFetch,
     start,
     startServer,
@@ -17,7 +16,6 @@ import { getService, mockService, serverState } from "@web/../tests/web_test_hel
 import { BUS_COUNTER, BUS_NEW, defineStreamsModels } from "./streams_test_helpers";
 
 describe.current.tags("desktop");
-defineMailModels();
 defineStreamsModels();
 
 /** Элемент `mail.notify._streams_payload` — он же payload шины (А5). */
@@ -105,7 +103,9 @@ test("sticky-попап не гаснет и складывается в сте�
     await advanceTime(60_000);
     await contains(".o-streams-NotifyPopup.o-sticky");
     await click(".o-streams-NotifyContainer-paginator button[aria-label='Previous']");
-    expect(normalize(".o-streams-NotifyContainer-pagerValue")).toBe("1 / 2");
+    // именно `contains`, а не голый `expect`: ядровый `click` ждёт один
+    // микротик, а перерисовка Owl приезжает кадром позже
+    await contains(".o-streams-NotifyContainer-pagerValue", { text: "1 / 2" });
     await contains(".o-streams-NotifyCard-body", { text: "First" });
     // закрытие крестиком убирает карточку из стека
     await click(".o-streams-NotifyPopup-close");

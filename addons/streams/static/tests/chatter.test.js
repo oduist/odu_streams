@@ -1,7 +1,6 @@
 import {
     click,
     contains,
-    defineMailModels,
     openFormView,
     start,
     startServer,
@@ -14,7 +13,6 @@ import { asyncStep, mockService, waitForSteps } from "@web/../tests/web_test_hel
 import { defineStreamsModels } from "./streams_test_helpers";
 
 describe.current.tags("desktop");
-defineMailModels();
 defineStreamsModels();
 
 /**

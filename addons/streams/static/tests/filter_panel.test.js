@@ -1,7 +1,6 @@
 import {
     click,
     contains,
-    defineMailModels,
     onRpcBefore,
     openDiscuss,
     start,
@@ -16,7 +15,6 @@ import { asyncStep, onRpc, waitForSteps } from "@web/../tests/web_test_helpers";
 import { createStreamsRecordChannel, defineStreamsModels } from "./streams_test_helpers";
 
 describe.current.tags("desktop");
-defineMailModels();
 defineStreamsModels();
 
 test("панель фильтров: пять тумблеров в порядке клиента 15", async () => {

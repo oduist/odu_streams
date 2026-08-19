@@ -1,7 +1,6 @@
 import {
     click,
     contains,
-    defineMailModels,
     openDiscuss,
     start,
     startServer,
@@ -21,7 +20,6 @@ import {
 import { createStreamsPersonalChannel, defineStreamsModels } from "./streams_test_helpers";
 
 describe.current.tags("desktop");
-defineMailModels();
 defineStreamsModels();
 
 /**

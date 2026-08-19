@@ -1,6 +1,5 @@
 import {
     contains,
-    defineMailModels,
     openDiscuss,
     start,
     startServer,
@@ -18,7 +17,6 @@ import {
 } from "./streams_test_helpers";
 
 describe.current.tags("desktop");
-defineMailModels();
 defineStreamsModels();
 
 /** Категория сайдбара, в которую тред попал по `_computeDiscussAppCategory`. */

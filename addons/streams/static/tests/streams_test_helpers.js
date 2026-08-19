@@ -1,6 +1,11 @@
 import { mailModels } from "@mail/../tests/mail_test_helpers";
 
-import { Command, defineModels, serverState } from "@web/../tests/web_test_helpers";
+import {
+    Command,
+    defineModels,
+    defineParams,
+    serverState,
+} from "@web/../tests/web_test_helpers";
 
 import { DiscussChannel } from "./mock_server/mock_models/discuss_channel";
 import { MailMessage } from "./mock_server/mock_models/mail_message";
@@ -14,9 +19,20 @@ export { BUS_COUNTER, BUS_NEW, BUS_UPDATE } from "./mock_server/mock_models/mail
 
 /**
  * Mock-модели streams: свои (`mail.notify`, `mail.notify.recipient`) плюс
- * подклассы ядровых. Ядровые перечислены здесь же, потому что mock-сервер
- * регистрирует модели по `_name` и побеждает последняя регистрация —
- * набор должен быть цельным.
+ * подклассы ядровых.
+ *
+ * Ядровой набор раскрывается здесь же и наши классы ложатся поверх него ПО
+ * КЛЮЧУ объекта (`DiscussChannel`, `MailMessage`, ...) — так же, как это
+ * делает `im_livechat` (`livechat_test_helpers.js`). Это не косметика:
+ * `defineModels` получает `Object.values()`, и если ядровый класс и наш
+ * подкласс попадут в набор ОБА (например, из-за отдельного вызова
+ * `defineMailModels()`), `MockServer._loadModels` увидит две модели с одним
+ * `_name` и сделает
+ * `Object.setPrototypeOf(Object.getPrototypeOf(model), existingModel)`.
+ * Для подкласса `Object.getPrototypeOf(model)` — это и есть ядровый класс,
+ * то есть прототип замкнётся сам на себя: `TypeError: Cyclic __proto__
+ * value`, и падает весь набор. Поэтому набор регистрируется РОВНО ОДИН РАЗ
+ * и только через `defineStreamsModels()`.
  */
 export const streamsModels = {
     ...mailModels,
@@ -31,11 +47,12 @@ export const streamsModels = {
 /**
  * Регистрация mock-моделей streams.
  *
- * Вызывается в тестовом файле сразу после `defineMailModels()`: ядровый
- * набор задаёт базу (в том числе `defineParams({suite: "mail"})`), наш —
- * переопределяет то, что расширяет streams.
+ * Заменяет собой `defineMailModels()` (в том числе его
+ * `defineParams({suite: "mail"})`) — вызывать оба нельзя, см. комментарий
+ * к `streamsModels`.
  */
 export function defineStreamsModels() {
+    defineParams({ suite: "mail" }, "replace");
     return defineModels(streamsModels);
 }
 

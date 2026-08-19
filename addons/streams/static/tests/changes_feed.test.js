@@ -1,7 +1,6 @@
 import {
     click,
     contains,
-    defineMailModels,
     openDiscuss,
     start,
     startServer,
@@ -14,7 +13,6 @@ import { asyncStep, getService, onRpc, waitForSteps } from "@web/../tests/web_te
 import { createStreamsPersonalChannel, defineStreamsModels } from "./streams_test_helpers";
 
 describe.current.tags("desktop");
-defineMailModels();
 defineStreamsModels();
 
 /**

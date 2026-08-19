@@ -1,14 +1,14 @@
 import {
     click,
     contains,
-    defineMailModels,
+    insertText,
     openFormView,
     start,
     startServer,
 } from "@mail/../tests/mail_test_helpers";
 
 import { describe, expect, test } from "@odoo/hoot";
-import { edit, queryOne } from "@odoo/hoot-dom";
+import { queryOne } from "@odoo/hoot-dom";
 import { advanceTime } from "@odoo/hoot-mock";
 
 import { asyncStep, onRpc, waitForSteps } from "@web/../tests/web_test_helpers";
@@ -16,7 +16,6 @@ import { asyncStep, onRpc, waitForSteps } from "@web/../tests/web_test_helpers";
 import { defineStreamsModels } from "./streams_test_helpers";
 
 describe.current.tags("desktop");
-defineMailModels();
 defineStreamsModels();
 
 /**
@@ -54,8 +53,11 @@ test("поиск получателей: дебаунс, домен и чипы"
         return [[userId, "Marc Demo"]];
     });
     await openComposerFromChatter(pyEnv);
-    await click(".o-streams-NotifyComposer-search");
-    await edit("Marc");
+    // именно `insertText`, а не `click` + `edit`: ядровый `click` из
+    // `mail_test_helpers` только рассылает focus-события, но не зовёт
+    // `el.focus()`, а `edit()` из hoot печатает в `document.activeElement`
+    // — то есть в поле, которое сфокусировал `Dialog` при открытии
+    await insertText(".o-streams-NotifyComposer-search", "Marc");
     // поиск дебаунсится на 300 мс (F1)
     await advanceTime(300);
     await waitForSteps([
@@ -67,7 +69,8 @@ test("поиск получателей: дебаунс, домен и чипы"
     ]);
     await contains(".o-streams-NotifyComposer-result", { text: "Marc Demo" });
     await click(".o-streams-NotifyComposer-result");
-    await contains(".o-streams-NotifyComposer-chip", { text: "Marc Demo" });
+    // `:contains`, а не `{text}`: в текст чипа входит и крестик удаления
+    await contains(".o-streams-NotifyComposer-chip:contains('Marc Demo')");
     // выбранный получатель уходит из подсказки
     await contains(".o-streams-NotifyComposer-result", { count: 0 });
 });
@@ -96,12 +99,10 @@ test("отправка уведомления по записи: получат�
     const partnerId = await openComposerFromChatter(pyEnv);
     // без получателя отправка заблокирована (F9)
     await contains(".o-streams-NotifyComposer-send:disabled");
-    await click(".o-streams-NotifyComposer-search");
-    await edit("Marc");
+    await insertText(".o-streams-NotifyComposer-search", "Marc");
     await advanceTime(300);
     await click(".o-streams-NotifyComposer-result");
-    await click(".o-streams-NotifyComposer-body");
-    await edit("Deadline moved to Friday");
+    await insertText(".o-streams-NotifyComposer-body", "Deadline moved to Friday");
     await click(".o-streams-NotifyComposer-send:enabled");
     await waitForSteps([
         `send:${JSON.stringify({

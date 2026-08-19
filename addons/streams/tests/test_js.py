@@ -2,14 +2,35 @@
 import odoo.tests
 from odoo.addons.web.tests.test_js import unit_test_error_checker
 
-# Фильтр набора: Hoot строит имя сюиты из пути модуля
+# Hoot строит имя сюиты из пути модуля
 # (`web/static/tests/_framework/module_set.hoot.js`, `getSuitePath`), поэтому
 # наши файлы `streams/static/tests/*.test.js` живут под `@streams/...`.
-# Текстовый фильтр сравнивается с полным именем задачи, так что `streams`
-# отбирает ровно наш модуль и не тянет ~10 000 тестов ядра.
+STREAMS_HOOT_SUITE = '@streams'
+
+
+def _hoot_job_id(full_name):
+    """Id задачи Hoot по её полному имени.
+
+    Тот же хеш считают ядровый `HOOTCommon._generate_hash`
+    (`web/tests/test_js.py`) и клиент (`hoot/hoot_utils.js`, `generateHash`).
+
+    Отбор именно по `&id=`, а не по `&filter=`: текстовый фильтр Hoot для
+    незакавыченного слова — НЕЧЁТКИЙ (`hoot_utils.js`,
+    `QueryPartialString.compareFn = getFuzzyScore`). Слово `streams`
+    подсвечивается как подпоследовательность в тысячах ядровых имён
+    (`@html_editor/li**s**t/normaliza**t**ion/...`), поэтому `filter=streams`
+    запускал весь набор ядра (~10 000 тестов) вместо наших 26.
+    """
+    value = 0
+    for char in full_name:
+        value = ((value << 5) - value + ord(char)) & 0xFFFFFFFF
+    return '%08x' % value
+
+
 STREAMS_HOOT_URL = (
     '/web/tests'
-    '?headless&loglevel=2&preset=desktop&timeout=30000&filter=streams'
+    '?headless&loglevel=2&preset=desktop&timeout=30000'
+    '&id=%s' % _hoot_job_id(STREAMS_HOOT_SUITE)
 )
 
 

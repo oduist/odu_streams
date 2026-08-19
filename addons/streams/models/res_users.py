@@ -47,6 +47,25 @@ class ResUsers(models.Model):
             streams_notify=self.env['mail.notify'].with_user(
                 self)._streams_init_messaging())
 
+    def _streams_partner_scope(self):
+        """Охват чаттера контакта пользователя (§18.2).
+
+        Читается сервером, а не приходит из запроса. Контекст
+        `streams_partner_direct` форсирует Direct — страховка для
+        мобильного API и внутренних вызовов `_message_fetch`, которым
+        агрегат не нужен.
+
+        sudo: это собственная строка настроек пользователя, к выборке
+        ленты она отношения не имеет. Записи может не быть вовсе —
+        отсутствие настройки означает дефолт, а не ошибку.
+        """
+        self.ensure_one()
+        if self.env.context.get('streams_partner_direct'):
+            return 'direct'
+        settings = self.env['res.users.settings'].sudo().search(
+            [('user_id', '=', self.id)], limit=1)
+        return settings.streams_partner_scope or 'related'
+
     def _streams_force_inbox(self):
         """Удержать внутренних на inbox, а внешних (share) — на email.
 

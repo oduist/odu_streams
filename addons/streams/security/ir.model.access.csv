@@ -6,3 +6,5 @@ access_mail_notify_recipient_user,mail.notify.recipient user,model_mail_notify_r
 access_mail_channel_external_participant_system,mail.channel.external.participant system,model_mail_channel_external_participant,base.group_system,1,1,1,1
 access_streams_guest_invite_wizard_user,streams.guest.invite.wizard user,model_streams_guest_invite_wizard,base.group_user,1,1,1,1
 access_streams_guest_invite_wizard_line_user,streams.guest.invite.wizard.line user,model_streams_guest_invite_wizard_line,base.group_user,1,1,1,1
+access_streams_partner_source_user,streams.partner.source user,model_streams_partner_source,base.group_user,1,0,0,0
+access_streams_partner_source_system,streams.partner.source system,model_streams_partner_source,base.group_system,1,1,1,1

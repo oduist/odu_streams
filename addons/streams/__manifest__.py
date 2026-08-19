@@ -1,7 +1,7 @@
 # -*- encoding: utf-8 -*-
 {
     'name': 'Streams',
-    'version': '19.0.1.5.0',
+    'version': '19.0.1.6.0',
     'category': 'Discuss',
     'summary': 'Record channels, message streams and explicit-only following',
     'description': """
@@ -32,6 +32,7 @@ Ported to Odoo 19 (phase 5); the Odoo 15 web client lives in
         'data/mail_message_subtype_data.xml',
         'data/streams_notify_data.xml',
         'data/streams_guest_data.xml',
+        'views/streams_partner_source_views.xml',
         'views/streams_field_subscription_wizard_views.xml',
         'views/streams_guest_invite_wizard_views.xml',
         'views/guest_templates.xml',

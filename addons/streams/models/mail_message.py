@@ -4,6 +4,9 @@ import logging
 from odoo import models, fields, api
 from odoo.addons.mail.tools.discuss import Store
 from odoo.fields import Domain
+from odoo.tools.sql import SQL
+
+from .streams_partner_source import STREAMS_PARTNER_VIEW
 
 _logger = logging.getLogger(__name__)
 
@@ -32,6 +35,17 @@ STREAMS_FILTER_DEFAULTS = {
     STREAM_CHANGE: False,
     STREAM_ACTIVITY: True,
 }
+
+# Потоки, попадающие в виртуальную часть ленты партнёра (§18.4, Р7):
+# виртуальные `change` и «прочее» в агрегат не идут.
+STREAMS_PARTNER_STREAMS = (
+    STREAM_COMMENT, STREAM_NOTE, STREAM_MESSAGE, STREAM_ACTIVITY)
+
+# Over-fetch виртуальной ленты (Р4). Лимит в 19 применяется ДО ACL
+# (`mail_message.py:345`), поэтому страница «сжимается» и её приходится
+# добирать сдвигом курсора; потолок итераций удерживает стоимость.
+STREAMS_PARTNER_OVERFETCH_FACTOR = 4
+STREAMS_PARTNER_OVERFETCH_ITERATIONS = 5
 
 
 class MailMessage(models.Model):
@@ -354,6 +368,112 @@ class MailMessage(models.Model):
         return domain
 
     # ------------------------------------------------------------
+    # ВИРТУАЛЬНАЯ ЛЕНТА ПАРТНЁРА (§18)
+    # ------------------------------------------------------------
+
+    @api.model
+    def _streams_partner_domain(self, partner):
+        """Домен агрегированной ленты контакта или None (§18.2, §18.4).
+
+        None означает «работать как раньше, лентой самой карточки»: так
+        отдаётся охват Direct (Р6, Р12) и деградация при отсутствии вьюхи
+        (Р10) — сломанная вьюха не должна ронять чаттер.
+
+        Виртуальная часть ограничена потоками comment/note/message/
+        activity: виртуальные `change` и «прочее» в агрегат не попадают
+        (§18.4). Ветка самого партнёра ограничений не имеет — изменения
+        по самому контакту показываются как раньше, по фильтру §6.
+
+        `sudo()` здесь нет и быть не может: единственное, что закрывает
+        сообщения недоступных записей, — ядровый `mail.message._search`
+        с `_find_allowed_doc_ids`.
+        """
+        scope = self.env.user._streams_partner_scope()
+        if scope == 'direct':
+            return None
+        source = self.env['streams.partner.source']
+        if not source._streams_view_available():
+            _logger.error(
+                'streams: вьюха %s отсутствует — лента контакта %s'
+                ' деградирует в Direct', STREAMS_PARTNER_VIEW, partner.id)
+            return None
+        if scope == 'company':
+            column, target = (
+                'commercial_partner_id', partner.commercial_partner_id.id)
+        else:
+            column, target = 'partner_id', partner.id
+        if not target:
+            return None
+        virtual = Domain('id', 'in', SQL(
+            'SELECT v.message_id FROM %(view)s v WHERE v.%(column)s = %(target)s',
+            view=SQL.identifier(STREAMS_PARTNER_VIEW),
+            column=SQL.identifier(column),
+            target=target,
+            to_flush=source._streams_flush_fields(),
+        )) & Domain.OR([
+            self._streams_stream_domain(stream)
+            for stream in STREAMS_PARTNER_STREAMS
+        ])
+        direct = Domain('model', '=', 'res.partner') \
+            & Domain('res_id', '=', partner.id)
+        # ядровый терм теряется вместе с thread — возвращаем его явно
+        return (direct | virtual) \
+            & Domain('message_type', '!=', 'user_notification')
+
+    def _streams_partner_page(self, domain, *, search_term, is_notification,
+                              before, after, around, limit):
+        """Страница виртуальной ленты с добором после ACL (Р4).
+
+        Ядро применяет `limit` в SQL ДО фильтрации прав
+        (`mail_message.py:345`), а в ленте контакта прав режет много:
+        пользователь видит карточку, но не видит половину её заказов.
+        Поэтому страница набирается итеративным сдвигом курсора тем же
+        доменом и по монотонно убывающему (растущему при `after`) id —
+        пагинация клиента при этом остаётся корректной.
+
+        Пустая выборка курсор двигать не даёт (нижняя граница окна
+        известна только SQL), поэтому окно расширяется от той же точки.
+        `around` добора не имеет: это разовый переход к сообщению, а не
+        прокрутка ленты.
+        """
+        fetch = lambda cursor, page_limit: super(  # noqa: E731
+            MailMessage, self)._message_fetch(
+                domain, thread=None, search_term=search_term,
+                is_notification=is_notification,
+                before=None if after else cursor,
+                after=cursor if after else None,
+                around=around, limit=page_limit)
+        if around is not None:
+            return fetch(None, limit)
+        ascending = bool(after)
+        cursor = after if ascending else before
+        page_limit = limit * STREAMS_PARTNER_OVERFETCH_FACTOR
+        result = None
+        collected = []
+        seen = set()
+        for _iteration in range(STREAMS_PARTNER_OVERFETCH_ITERATIONS):
+            page = fetch(cursor, page_limit)
+            if result is None:
+                # `count` и прочие ключи считаются по всему домену —
+                # берём их из первой выборки
+                result = page
+            page_ids = page['messages'].ids
+            if not page_ids:
+                page_limit *= 2
+                continue
+            for message_id in page_ids:
+                if message_id not in seen:
+                    seen.add(message_id)
+                    collected.append(message_id)
+            if len(collected) >= limit:
+                break
+            cursor = max(page_ids) if ascending else min(page_ids)
+        collected.sort(reverse=not ascending)
+        result['messages'] = self.browse(sorted(collected[:limit],
+                                                reverse=True))
+        return result
+
+    # ------------------------------------------------------------
     # ЛЕНТА КАНАЛА С ПРОЕКЦИЯМИ
     # ------------------------------------------------------------
 
@@ -371,7 +491,21 @@ class MailMessage(models.Model):
         перечитывает ленту. Контекст `streams_unfiltered=True` отключает
         фильтр (мобильное API фильтрует у себя на клиенте, его контракт
         меняться не должен).
+
+        Чаттер `res.partner` — вторая ветка (§18): тред разворачивается в
+        домен агрегата, дальше работает ядровая пагинация с добором
+        страницы после ACL.
         """
+        if thread is not None and thread._name == 'res.partner' \
+                and len(thread) == 1:
+            partner_domain = self._streams_partner_domain(thread)
+            if partner_domain is not None:
+                domain = partner_domain if domain is None \
+                    else Domain(domain) & partner_domain
+                return self._streams_partner_page(
+                    domain, search_term=search_term,
+                    is_notification=is_notification, before=before,
+                    after=after, around=around, limit=limit)
         if thread is not None and thread._name == 'discuss.channel' \
                 and len(thread) == 1 and thread.channel_kind:
             projection = thread._streams_message_domain() \

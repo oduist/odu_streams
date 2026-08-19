@@ -19,3 +19,10 @@ class ResUsersSettings(models.Model):
     # него не зависят — глушится только звук.
     is_streams_notify_sound_muted = fields.Boolean(
         string="Is the notification sound muted?", default=False)
+    # Охват чаттера контакта (§18.2). Персональный и персистентный;
+    # клиент его в запросе ленты НЕ передаёт — сервер читает настройку
+    # сам, иначе тот же охват пришлось бы дублировать в каждом
+    # потребителе `_message_fetch`.
+    streams_partner_scope = fields.Selection(
+        [('direct', 'Direct'), ('related', 'Related'), ('company', 'Company')],
+        string='Partner Chatter Scope', default='related')

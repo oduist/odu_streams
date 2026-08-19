@@ -1,4 +1,5 @@
 # -*- encoding: utf-8 -*-
+from . import streams_partner_source
 from . import mail_field_subscription
 from . import mail_notify
 from . import mail_message
@@ -12,6 +13,7 @@ from . import mail_activity
 # mail_wizard_invite: модели mail.wizard.invite в 19 нет (заменена на
 # mail.followers.edit); серверный фильтр внутренних пользователей живёт
 # в mail_thread.message_subscribe, через который идёт и новый визард
+from . import res_partner
 from . import res_users
 from . import res_users_settings
 from . import res_config_settings

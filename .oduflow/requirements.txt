@@ -1,1 +1,3 @@
 openupgradelib
+websocket-client
+playwright==1.40.0

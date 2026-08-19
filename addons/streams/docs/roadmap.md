@@ -1057,7 +1057,51 @@ flutter_localizations). `flutter analyze` — 0 issues, `flutter test` — 19
    `pending_popups` в init называется `pending` (payload
    `_streams_init_messaging` as-is).
 
+### Фаза 8, WP5a — JS-тесты (Hoot) и туры веб-UI (2026-08-19)
+
+Дизайн — `docs/design-phase8.md` §WP5. Тестируется реализация фазы 8
+(коммиты 0774615, 23d4604, 19e91d1, 8d03943, 06d5cf6), сама реализация не
+переделывалась.
+
+- **Инфраструктура моков** — `static/tests/streams_test_helpers.js`
+  (`defineStreamsModels()`, фикстуры каналов) и
+  `static/tests/mock_server/mock_models/`: `mail.notify` (+
+  `mail.notify.recipient`) со всеми шестью RPC и `_streams_init_messaging`,
+  патчи `discuss.channel` (`channel_kind`/`res_model`/`res_id`/
+  `streams_filters`, `streams_set_filters`, `streams_mark_read`,
+  `streams_changes_feed` с формой `with_cursor`), `mail.message`
+  (`streams_kind`, `stream_channel_ids`), `res.users`
+  (глобальное значение Store `streams_notify`), `res.users.settings`
+  (дефолты наших полей — `fields_get` их не отдаёт).
+- **Hoot** — 26 тестов в 7 файлах `static/tests/*.test.js`: чаттер,
+  панель фильтров, сайдбар, лента Changes (пагинация по курсору),
+  попапы/колокол Notify, лента Notifications, композер Notify.
+- **Туры** — `static/tests/tours/streams_{chatter,channel,notify}_tour.js`
+  плюс запускалки `tests/test_tours.py`; Hoot-обёртка — `tests/test_js.py`
+  (`browser_js` на `/web/tests?...&filter=streams` по образцу
+  `web/tests/test_js.py`).
+- **Найденный баг реализации**: `mail.notify.author` на клиенте был
+  объявлен `fields.One("res.partner")`, тогда как сервер шлёт в `author.id`
+  идентификатор `res.users` (`mail.notify.author_id`). Store заводил
+  `res.partner` с чужим id и перетирал имя постороннему контакту. Поле
+  переведено в `fields.Attr` (`notify_model.js`); ни карточке, ни ленте
+  запись партнёра не нужна — они читают только `author.name`. Регрессия
+  закреплена тестом в `notify_popup.test.js`.
+- Полный прогон: **113 тестов, 0 failed, 0 errors** (109 прежних + 4 новых
+  python-обёртки). Обёртки браузерных тестов в среде `streams19`
+  **пропускаются** — см. блокер в «To check / to do».
+
 ## To check / to do
+
+- [ ] **Браузерные тесты фазы 8 ни разу не исполнялись**: в контейнере
+  `streams19` нет ни python-пакета `websocket-client` (на нём `HttpCase`
+  падает в `SkipTest` первым), ни Chrome/Chromium (`_find_executable` в
+  `odoo/tests/common.py`). Из-за этого `tests/test_js.py` и
+  `tests/test_tours.py` в прогоне помечаются skipped, а 26 Hoot-тестов и 3
+  тура проверены только статически. Разблокировка: `pip install
+  websocket-client` + `apt-get install -y chromium` в контейнере (обе
+  операции требуют явного согласия пользователя), после чего
+  `run_odoo_tests(modules="streams")` прогонит их по-настоящему.
 
 - [ ] **Merge каналов при слиянии записей** (`message_change_thread` →
   `_streams_merge_into`): код написан и закоммичен, живьём ни разу не

@@ -24,10 +24,18 @@ export class StreamsNotify extends Record {
     /** Момент создания; сервер шлёт его под ключом `date`, не `create_date`. */
     date = fields.Datetime();
     /**
-     * Автор. Сервер шлёт `{id, name}` под ключом `author` — этого хватает,
-     * чтобы Store завёл/обновил запись партнёра.
+     * Автор плоским словарём `{id, name}`.
+     *
+     * Не `fields.One("res.partner")`: `id` здесь — идентификатор
+     * `res.users` (`mail.notify.author_id`), а не партнёра. Реляционное
+     * поле заставило бы Store завести `res.partner` с чужим id и
+     * переписать имя постороннему контакту (сайдбар, чаты, чаттер брали
+     * бы его из Store). Записью партнёра автор уведомления нигде и не
+     * нужен: и карточка, и лента читают только `author.name`.
+     *
+     * @type {{id: number, name: string}|false}
      */
-    author = fields.One("res.partner");
+    author = fields.Attr(false);
     /** @type {boolean} */
     is_sticky = fields.Attr(false);
     /** @type {number} Автозакрытие не-sticky попапа, сек (сервер жмёт в 3..300). */

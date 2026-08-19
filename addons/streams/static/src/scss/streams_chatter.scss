@@ -1,0 +1,38 @@
+// Минимальные стили элементов streams: кнопки чаттера, панель фильтров
+// канала записи, переключатель Comment/Note в композере.
+// Всё остальное — ядровые классы Bootstrap/Discuss.
+
+.o-mail-Chatter-topbar {
+    // кнопки потоков не должны переноситься и «прыгать» при сужении:
+    // топбар и так скроллится по горизонтали (o-mail-Chatter-topbar)
+    .o-streams-Chatter-sendExternal,
+    .o-streams-Chatter-notify,
+    .o-streams-Chatter-changes,
+    .o-streams-Chatter-invite {
+        flex-shrink: 0;
+    }
+}
+
+.o-streams-FilterPanel {
+    .o-streams-FilterPanel-list {
+        padding: 0.25rem 0.5rem;
+    }
+
+    // тумблер: активный поток видно и без цвета — по иконке-галочке
+    .o-streams-FilterPanel-toggle {
+        justify-content: flex-start;
+        white-space: nowrap;
+    }
+}
+
+// активный режим композера канала (Comment/Note) — ядровый класс .active
+// у кнопки действия композера даёт только фон; добавляем контур,
+// чтобы режим читался и в тёмной теме
+.o-mail-Composer-quickActions {
+    .o-mail-ActionList-button[name="streams-comment"],
+    .o-mail-ActionList-button[name="streams-note"] {
+        &.active {
+            font-weight: bolder;
+        }
+    }
+}

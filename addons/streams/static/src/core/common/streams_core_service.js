@@ -130,6 +130,25 @@ export class StreamsCore {
     }
 
     /**
+     * Открыть композер уведомления (§12.2).
+     *
+     * Согласованная точка вызова для чаттера
+     * (`chatter/web/chatter_patch.js`) и шапки канала
+     * (`discuss/core/common/streams_thread_actions.js`).
+     *
+     * Здесь — только заглушка-фолбэк: сам диалог (решение Р5 фазы 8 —
+     * свой OWL-диалог, а не act_window, ради поиска получателей, чипов,
+     * sticky/timeout и голоса) подменяет этот метод патчем в
+     * `notify/streams_notify_service_patch.js`.
+     *
+     * @param {{resModel: string|false, resId: number|false,
+     *          recordName?: string}} [params]
+     */
+    openNotifyComposer(params) {
+        console.warn("streams: Notify composer is not implemented yet", params);
+    }
+
+    /**
      * Положить уведомление в Store и в очередь непоказанных попапов.
      *
      * @param {Object} notifyData элемент `_streams_payload`

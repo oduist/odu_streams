@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<templates xml:space="preserve">
+
+    <t t-name="streams.FilterPanel">
+        <ActionPanel title.translate="Streams" icon="'fa fa-filter'">
+            <div class="o-streams-FilterPanel-list d-flex flex-column gap-1">
+                <button t-foreach="filters" t-as="filter" t-key="filter.key"
+                    class="o-streams-FilterPanel-toggle btn btn-sm d-flex align-items-center text-start"
+                    t-att-class="filter.active ? 'btn-primary o-active' : 'btn-secondary'"
+                    t-att-data-streams-filter="filter.key"
+                    t-att-aria-pressed="filter.active ? 'true' : 'false'"
+                    t-on-click="() => this.onClickFilter(filter)">
+                    <i class="fa fa-fw" t-att-class="filter.active ? 'fa-check-square-o' : 'fa-square-o'"/>
+                    <span class="ms-2" t-esc="filter.label"/>
+                </button>
+            </div>
+        </ActionPanel>
+    </t>
+
+</templates>

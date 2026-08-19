@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<templates xml:space="preserve">
+
+    <t t-inherit="mail.Chatter" t-inherit-mode="extension">
+
+        <!--
+            Ядровая Send message → Comment (§11.1, B1).
+
+            Поведение кнопки не меняется: это тот же ядровый композер
+            `type='message'` с подтипом `mail.mt_comment`. Меняются только
+            подпись и тултип: в streams этот поток — внутреннее общение
+            сотрудников, письма из него не уходят (§7). Классы ядра
+            (`o-mail-Chatter-sendMessage`) сохранены — на них опираются
+            тесты ядра и сторонние модули (B8).
+        -->
+        <xpath expr="//button[hasclass('o-mail-Chatter-sendMessage')]" position="attributes">
+            <attribute name="title">Post an internal comment</attribute>
+        </xpath>
+        <xpath expr="//button[hasclass('o-mail-Chatter-sendMessage')]" position="replace" mode="inner">Comment</xpath>
+
+        <!-- Ядровая Log note → Note (§11.1, B2). -->
+        <xpath expr="//button[hasclass('o-mail-Chatter-logNote')]" position="attributes">
+            <attribute name="title">Log an internal note</attribute>
+        </xpath>
+        <xpath expr="//button[hasclass('o-mail-Chatter-logNote')]" position="replace" mode="inner">Note</xpath>
+
+        <!--
+            Send Message / Notify / Changes / Invite customer (§11.1).
+
+            Порядок и тултипы — как в клиенте 15 (`legacy15/xml/chatter_topbar.xml`).
+            Все четыре требуют сохранённую запись: до неё у треда нет id, а
+            все действия адресуются паре (модель, id).
+        -->
+        <xpath expr="//button[hasclass('o-mail-Chatter-logNote')]" position="after">
+            <button class="o-streams-Chatter-sendExternal btn btn-secondary text-nowrap me-1"
+                t-att-class="{ 'my-2': !props.compactHeight }"
+                t-if="state.thread.id"
+                t-att-disabled="!state.thread.canPostMessage"
+                title="Send an external message to customers"
+                t-on-click="() => this.onClickStreamsSendMessage()">Send Message</button>
+            <button class="o-streams-Chatter-notify btn btn-secondary text-nowrap me-1"
+                t-att-class="{ 'my-2': !props.compactHeight }"
+                t-if="state.thread.id"
+                t-att-disabled="isDisabled"
+                title="Send a priority notification about this record"
+                t-on-click="() => this.onClickStreamsNotify()">Notify</button>
+            <button class="o-streams-Chatter-changes btn btn-secondary text-nowrap me-1"
+                t-att-class="{ 'my-2': !props.compactHeight }"
+                t-if="state.thread.id"
+                t-att-disabled="isDisabled"
+                title="Choose which field changes reach your Changes stream"
+                t-on-click="() => this.onClickStreamsChanges()">Changes</button>
+            <button class="o-streams-Chatter-invite btn btn-secondary text-nowrap me-1"
+                t-att-class="{ 'my-2': !props.compactHeight }"
+                t-if="state.thread.id"
+                t-att-disabled="isDisabled"
+                title="Give a customer access to this chat by a personal link"
+                t-on-click="() => this.onClickStreamsInvite()">Invite customer</button>
+        </xpath>
+
+        <!--
+            Строка получателей «To: …» над композером Comment (§7).
+
+            Ядро рисует её для `composerType === 'message'` и рассылает этим
+            получателям письмо. В streams внутренний комментарий писем не
+            шлёт (`core/common/store_service_patch.js` гасит подмешивание
+            получателей), поэтому и обещать их в UI нельзя.
+        -->
+        <xpath expr="//RecipientsInput/.." position="attributes">
+            <attribute name="t-if">streamsShowsRecipients</attribute>
+        </xpath>
+
+    </t>
+
+</templates>

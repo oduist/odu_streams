@@ -76,6 +76,42 @@ class TestStreamsTours(HttpCase):
             member._streams_get_filters()['note'], True,
             'тумблер Notes вернулся во включённое состояние')
 
+    def test_partner_scope_tour(self):
+        """Переключатель охвата чаттера контакта (§18.2).
+
+        Ветка реестра берётся установленная — `crm.lead.partner_id`
+        (сид Р9): тур обязан проверять настоящую цепочку
+        «реестр → SQL VIEW → `_message_fetch`», а не тестовую строку.
+        Без crm пропускается: streams от него не зависит.
+        """
+        if 'crm.lead' not in self.env:
+            self.skipTest('crm не установлен: ветка реестра недоступна')
+        company = self.env['res.partner'].create({
+            'name': 'Streams Scope Tour Company', 'is_company': True})
+        contact = self.env['res.partner'].create({
+            'name': 'Streams Scope Tour Contact', 'parent_id': company.id})
+        lead = self.env['crm.lead'].create({
+            'name': 'Streams Scope Tour Lead', 'partner_id': contact.id})
+        contact.with_user(self.admin).message_post(
+            body='Contact own message for the scope tour',
+            message_type='comment', subtype_xmlid='mail.mt_comment')
+        lead.with_user(self.admin).message_post(
+            body='Lead message for the scope tour',
+            message_type='comment', subtype_xmlid='mail.mt_comment')
+        # старт с заведомого Related: настройка персистентная, и её
+        # значение из чужого прогона сделало бы первый шаг случайным
+        settings = self.env['res.users.settings']._find_or_create_for_user(
+            self.admin)
+        settings.streams_partner_scope = 'related'
+        self.start_tour(
+            '/odoo/res.partner/%s' % contact.id,
+            'streams_partner_scope_tour',
+            login='admin',
+        )
+        self.assertEqual(
+            settings.streams_partner_scope, 'related',
+            'тур вернул охват в Related')
+
     def test_notify_tour(self):
         """Композер приоритетного уведомления (§12.2).
 

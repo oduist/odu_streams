@@ -49,6 +49,17 @@ patch(Thread.prototype, {
          * @type {Object<string, boolean>}
          */
         this.streams_filters = fields.Attr({ ...STREAMS_FILTER_DEFAULTS });
+        /**
+         * Есть ли у контакта организация или дочерние контакты (§18.2, Р11).
+         *
+         * Ключ отдаёт `res.partner._thread_to_store` и только на запрос
+         * данных треда, поэтому у всех прочих тредов он остаётся false.
+         * Клиенту он нужен ровно для одного: показывать ли кнопку
+         * Company — сам охват считает сервер.
+         *
+         * @type {boolean}
+         */
+        this.streams_company_scope_available = fields.Attr(false);
     },
 
     /** Канал записи — единственный вид, где есть шапка с фильтрами. */

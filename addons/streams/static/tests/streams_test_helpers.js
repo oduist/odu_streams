@@ -9,6 +9,7 @@ import {
 
 import { DiscussChannel } from "./mock_server/mock_models/discuss_channel";
 import { MailMessage } from "./mock_server/mock_models/mail_message";
+import { MailThread } from "./mock_server/mock_models/mail_thread";
 import { MailNotify } from "./mock_server/mock_models/mail_notify";
 import { MailNotifyRecipient } from "./mock_server/mock_models/mail_notify_recipient";
 import { ResUsers } from "./mock_server/mock_models/res_users";
@@ -38,6 +39,7 @@ export const streamsModels = {
     ...mailModels,
     DiscussChannel,
     MailMessage,
+    MailThread,
     MailNotify,
     MailNotifyRecipient,
     ResUsers,

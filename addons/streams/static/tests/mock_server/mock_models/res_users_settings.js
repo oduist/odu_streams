@@ -13,4 +13,5 @@ import { fields } from "@web/../tests/web_test_helpers";
 export class ResUsersSettings extends mailModels.ResUsersSettings {
     is_discuss_sidebar_category_streams_open = fields.Generic({ default: true });
     is_streams_notify_sound_muted = fields.Generic({ default: false });
+    streams_partner_scope = fields.Generic({ default: "related" });
 }

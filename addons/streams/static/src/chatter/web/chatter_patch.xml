@@ -59,6 +59,37 @@
         </xpath>
 
         <!--
+            Переключатель охвата чаттера контакта (§18.2).
+
+            Сегмент, а не дропдаун: вариантов три, текущее состояние
+            видно без раскрытия, а в топбаре и так уже шесть кнопок.
+            Место — перед распоркой `o-mail-Chatter-topbarGrow`, то есть
+            справа от кнопок потоков и слева от поиска.
+
+            Охват в запрос ленты НЕ передаётся (Р6): сервер читает
+            настройку `res.users.settings.streams_partner_scope` сам.
+        -->
+        <xpath expr="//span[hasclass('o-mail-Chatter-topbarGrow')]" position="before">
+            <div t-if="streamsShowsPartnerScope"
+                class="o-streams-Chatter-scope btn-group btn-group-sm align-self-center me-1"
+                t-att-class="{ 'my-2': !props.compactHeight }"
+                role="group" aria-label="Contact chatter scope">
+                <button t-foreach="streamsPartnerScopes" t-as="item" t-key="item.scope"
+                    type="button"
+                    class="o-streams-Chatter-scopeButton btn text-nowrap"
+                    t-att-class="{
+                        'btn-primary active': item.scope === streamsPartnerScope,
+                        'btn-secondary': item.scope !== streamsPartnerScope,
+                    }"
+                    t-att-data-streams-scope="item.scope"
+                    t-att-aria-pressed="item.scope === streamsPartnerScope ? 'true' : 'false'"
+                    t-att-title="item.title"
+                    t-on-click="() => this.onClickStreamsPartnerScope(item.scope)"
+                    t-esc="item.label"/>
+            </div>
+        </xpath>
+
+        <!--
             Строка получателей «To: …» над композером Comment (§7).
 
             Ядро рисует её для `composerType === 'message'` и рассылает этим

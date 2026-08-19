@@ -1091,17 +1091,65 @@ flutter_localizations). `flutter analyze` — 0 issues, `flutter test` — 19
   python-обёртки). Обёртки браузерных тестов в среде `streams19`
   **пропускаются** — см. блокер в «To check / to do».
 
+### Фаза 8, WP5b — браузерный прогон и живая проверка UI (2026-08-19)
+
+Hoot и туры исполнены настоящим браузером с хоста (Chromium в контейнере
+блокирован seccomp — детали в «To check»): **Hoot 26/26 зелёные, туры
+3/3**. Правились только тесты, реализация не тронута:
+
+- `tests/test_js.py`: отбор набора через `&id=<хеш имени сюиты>` вместо
+  `&filter=streams` — текстовый фильтр Hoot нечёткий и запускал весь набор
+  ядра (~10 000 тестов);
+- `static/tests/streams_test_helpers.js`: `defineStreamsModels()` заменяет
+  `defineMailModels()` (перекрытие моделей по ключу, как в im_livechat) —
+  двойная регистрация роняла весь набор `Cyclic __proto__ value`;
+- `notify_composer.test.js`: `insertText` вместо `click`+`edit` (ядровый
+  click не переносит фокус); `notify_popup.test.js`: `await contains`
+  вместо мгновенного `expect` (гонка с перерисовкой Owl).
+
+Живая DOM-проверка двумя сессиями (admin + свежий пользователь),
+скриншоты сняты (/tmp/streams-wp5b/shots): все 6 кнопок чаттера и
+отсутствие строки «To:», посты Comment/Note; категория Messages в
+сайдбаре (личные каналы — в ядровой Channels), панель из 5 тумблеров с
+дефолтом change=выкл, выключение Note перечитывает ленту и персистится
+через перезагрузку; Notify — transient-попап у получателя гаснет по
+таймауту, sticky-стек с пагинатором «2 / 2», Reply только автору, бейдж
+колокола по пушу, канал Notifications с вкладкой Received; Changes —
+визард подписки, лента «поле: было → стало», непрочитанность и гашение
+доскроллом. Консоль браузера — ноль ошибок streams.
+
+Полный контейнерный прогон после правок: **113 тестов, 0 failed,
+0 errors**.
+
 ## To check / to do
 
-- [ ] **Браузерные тесты фазы 8 ни разу не исполнялись**: в контейнере
-  `streams19` нет ни python-пакета `websocket-client` (на нём `HttpCase`
-  падает в `SkipTest` первым), ни Chrome/Chromium (`_find_executable` в
-  `odoo/tests/common.py`). Из-за этого `tests/test_js.py` и
-  `tests/test_tours.py` в прогоне помечаются skipped, а 26 Hoot-тестов и 3
-  тура проверены только статически. Разблокировка: `pip install
-  websocket-client` + `apt-get install -y chromium` в контейнере (обе
-  операции требуют явного согласия пользователя), после чего
-  `run_odoo_tests(modules="streams")` прогонит их по-настоящему.
+- [x] ~~Браузерные тесты фазы 8 ни разу не исполнялись~~ — **исполнены
+  2026-08-19 с хоста: Hoot 26/26, туры 3/3** (см. «Сделано → Фаза 8, WP5b»).
+  Внутри контейнера `streams19` браузер не заработает: любые сборки
+  Chromium (120/130/145) мгновенно падают SIGTRAP /
+  `partition_address_space.cc` из-за seccomp-профиля Docker — тот же
+  бинарник на хосте работает. `websocket-client` и `playwright` добавлены
+  в `.oduflow/requirements.txt`, поэтому обёртки `tests/test_js.py` /
+  `tests/test_tours.py` в контейнерном прогоне видят websocket, но
+  скипаются на «Failed to detect chrome devtools port» — **в контейнерном
+  CI эти 4 обёртки ничего не защищают**. Рецепт прогона с хоста: полный
+  `chrome` из `~/.cache/ms-playwright/chromium-1148` +
+  `LD_LIBRARY_PATH=.chromium-tmp/libs` (библиотеки скопированы из
+  контейнера, каталог gitignored) + локальный https-прокси на порт
+  окружения + флаг `--ignore-certificate-errors` (без него SharedWorker
+  шины отваливается БЕСШУМНО — пуши не доходят, ошибок нет) + отбор
+  Hoot-набора через `&id=<хеш>` (см. `tests/test_js.py`).
+- [ ] **Хеш `&id=` в `tests/test_js.py` завязан на имя сюиты `@streams`**:
+  переименование модуля молча даст пустой прогон; проверки «набор не
+  пуст» в обёртке нет.
+- [ ] **Визард Changes предлагает ~55 полей, а трекаются 8**
+  (`_streams_available_fields` отдаёт все, предвыбор — только `tracking`):
+  подписка на нетрекаемое поле не даёт ничего в ленте. Сверить с §8.1 —
+  ограничить список либо помечать нетрекаемые в UI.
+- [ ] **Артефакты WP5b в дев-БД streams19**: пользователь
+  `streams.wp5b@example.com` (пароль test12345), партнёр «Streams WP5b
+  Record» с каналом/подпиской/уведомлениями, пробные сообщения «WP5b …» —
+  удалить после ревью пользователя.
 
 - [ ] **Merge каналов при слиянии записей** (`message_change_thread` →
   `_streams_merge_into`): код написан и закоммичен, живьём ни разу не

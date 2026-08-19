@@ -1,0 +1,32 @@
+// Лента личного канала Changes (§8.3).
+//
+// Классы повторяют семантику разметки 15 (`o_StreamsChangesFeed_*`) в
+// именовании 19 (`o-streams-ChangesFeed-*`). Всё, что умеет bootstrap,
+// сделано утилитами прямо в шаблоне; здесь — только то, чего утилитами
+// не выразить: подсветка непрочитанного и разделители элементов.
+
+.o-streams-ChangesFeed {
+    &-item {
+        border-left: 3px solid transparent;
+
+        + .o-streams-ChangesFeed-item {
+            border-top: 1px solid rgba(var(--bs-emphasis-color-rgb), 0.1);
+        }
+
+        // непрочитанная запись: та же логика акцента, что у бейджей
+        // непрочитанного в сайдбаре — цветная планка слева плюс заливка
+        &.o-unread {
+            background-color: rgba(var(--bs-primary-rgb), 0.06);
+            border-left-color: var(--bs-primary);
+        }
+    }
+
+    &-recordName {
+        cursor: pointer;
+    }
+
+    // значения одного изменения выравниваются в столбец «поле: было → стало»
+    &-value {
+        overflow-wrap: anywhere;
+    }
+}

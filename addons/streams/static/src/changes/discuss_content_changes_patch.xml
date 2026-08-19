@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<templates xml:space="preserve">
+
+<!--
+    Личный канал Changes показывает не переписку, а ленту записей (§8.3),
+    поэтому ядровые `Thread` и `Composer` для него не строятся вовсе
+    (A19): иначе клиент вычитывал бы сообщения-изменения впустую.
+
+    Замена сделана через `position="replace"` + `$0`, а не через
+    `position="attributes"` с `t-if`: атрибут перетирается, а вложение
+    оригинала в `t-else` — нет. Благодаря этому такой же патч соседнего
+    пакета (лента Notifications) композируется с этим в любом порядке:
+    второй по загрузке патч найдёт `core-content` уже внутри `t-else`
+    первого и обернёт его ещё раз.
+-->
+<t t-inherit="mail.DiscussContent" t-inherit-mode="extension">
+    <xpath expr="//t[@name='core-content']" position="replace">
+        <t t-if="thread?.channel_kind === 'changes'"><StreamsChangesFeed thread="thread"/></t>
+        <t t-else="">$0</t>
+    </xpath>
+</t>
+
+</templates>

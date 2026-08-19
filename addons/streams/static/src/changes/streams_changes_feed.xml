@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<templates xml:space="preserve">
+
+<t t-name="streams.ChangesFeed">
+    <div class="o-streams-ChangesFeed d-flex flex-column flex-grow-1 w-100 overflow-auto o-scrollbar-thin p-3 gap-2" t-ref="root">
+        <div t-if="state.isLoading" class="o-streams-ChangesFeed-loading d-flex flex-grow-1 align-items-center justify-content-center text-muted">
+            <i class="fa fa-circle-o-notch fa-spin me-2"/>Loading changes...
+        </div>
+        <div t-elif="!state.items.length" class="o-streams-ChangesFeed-empty d-flex flex-grow-1 align-items-center justify-content-center text-center text-muted">
+            No tracked changes yet. Use the Changes button on a record to pick the fields you want to watch.
+        </div>
+        <t t-else="">
+            <div t-foreach="state.items" t-as="item" t-key="item.res_model + ',' + item.res_id"
+                class="o-streams-ChangesFeed-item p-2 rounded"
+                t-att-class="{ 'o-unread': item.unread }"
+                t-att-data-last-message-id="item.last_message_id"
+            >
+                <div class="o-streams-ChangesFeed-itemHeader d-flex align-items-center mb-1">
+                    <a class="o-streams-ChangesFeed-recordName fw-bold" href="#" t-on-click.prevent="() => this.onClickRecord(item)" t-esc="item.record_name"/>
+                </div>
+                <div t-foreach="item.changes" t-as="change" t-key="change.message_id" class="o-streams-ChangesFeed-change mb-1">
+                    <div class="o-streams-ChangesFeed-changeMeta d-flex gap-2 small text-muted">
+                        <span class="o-streams-ChangesFeed-author fw-bold" t-esc="change.author"/>
+                        <span class="o-streams-ChangesFeed-date" t-esc="formatDate(change.date)"/>
+                    </div>
+                    <ul class="mb-0 list-unstyled d-flex flex-column gap-1">
+                        <li t-foreach="change.values" t-as="value" t-key="value.field_id" class="o-streams-ChangesFeed-value" role="group">
+                            <span class="o-streams-ChangesFeed-field fst-italic text-muted me-1"><t t-esc="value.field_desc"/>:</span>
+                            <span class="o-streams-ChangesFeed-old text-muted fw-bold" t-esc="formatValue(value.old)"/>
+                            <i class="o-streams-ChangesFeed-arrow fa fa-long-arrow-right mx-2 text-600"/>
+                            <span class="o-streams-ChangesFeed-new fw-bold text-info" t-esc="formatValue(value.new)"/>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            <button t-if="state.hasMore" class="o-streams-ChangesFeed-loadMore btn btn-link align-self-center" t-att-disabled="state.isLoadingMore" t-on-click="onClickLoadMore">
+                <i t-if="state.isLoadingMore" class="fa fa-circle-o-notch fa-spin me-1"/>Load More
+            </button>
+        </t>
+    </div>
+</t>
+
+</templates>

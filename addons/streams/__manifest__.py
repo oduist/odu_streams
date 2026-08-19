@@ -1,7 +1,7 @@
 # -*- encoding: utf-8 -*-
 {
     'name': 'Streams',
-    'version': '19.0.1.4.0',
+    'version': '19.0.1.5.0',
     'category': 'Discuss',
     'summary': 'Record channels, message streams and explicit-only following',
     'description': """
@@ -37,6 +37,26 @@ Ported to Odoo 19 (phase 5); the Odoo 15 web client lives in
         'views/guest_templates.xml',
         'views/res_config_settings_views.xml',
     ],
+    # Клиент OWL 2 (фаза 8). Глоб намеренно один на весь `static/src/**`:
+    # так каталоги пакетов WP2–WP4 (chatter, discuss, notify, systray,
+    # changes, scss) подхватываются без правки манифеста. Из бандла
+    # исключается только гостевая страница — она грузится обычными
+    # <script>/<link> из `views/guest_templates.xml`, а не ассетами.
+    # `static/legacy15/**` в бандл не попадает по построению: он лежит вне
+    # `static/src` (код фреймворка 15 в бандле 19 не соберётся).
+    'assets': {
+        'web.assets_backend': [
+            'streams/static/src/**/*',
+            ('remove', 'streams/static/src/guest/**/*'),
+        ],
+        'web.assets_unit_tests': [
+            'streams/static/tests/**/*',
+            ('remove', 'streams/static/tests/tours/**/*'),
+        ],
+        'web.assets_tests': [
+            'streams/static/tests/tours/**/*',
+        ],
+    },
     'post_init_hook': 'post_init_hook',
     'installable': True,
     'application': False,

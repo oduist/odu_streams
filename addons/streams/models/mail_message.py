@@ -300,6 +300,60 @@ class MailMessage(models.Model):
                 partner._bus_send('streams.changes/updated', {'id': channel.id})
 
     # ------------------------------------------------------------
+    # ФИЛЬТРЫ ОТОБРАЖЕНИЯ КАК ДОМЕН (§6, решение Р1 фазы 8)
+    # ------------------------------------------------------------
+
+    @api.model
+    def _streams_stream_domain(self, stream):
+        """Домен «сообщение принадлежит потоку `stream`».
+
+        Зеркало `_streams_classify_vals`, выраженное доменом: тот же
+        порядок проверок, включая приоритет письма над подтипом.
+        Классификатором построчно фильтровать нельзя — сервер отдаёт
+        `limit` сообщений ДО фильтра, и питоновский фильтр поверх выдачи
+        ломает пагинацию (риск 1 отчёта core). Совпадение домена и
+        классификатора закрыто тестом на матрице (подтип × message_type).
+        """
+        subtypes = self._streams_subtype_ids()
+        email_types = ('email', 'email_outgoing')
+        is_email = Domain('message_type', 'in', email_types)
+        not_email = Domain('message_type', 'not in', email_types)
+        # адресное служебное уведомление к потокам записи не относится
+        base = Domain('message_type', '!=', 'user_notification')
+        if stream == STREAM_MESSAGE:
+            return base & (
+                is_email
+                | (not_email
+                   & Domain('subtype_id', '=',
+                            subtypes.get(STREAM_MESSAGE) or 0)))
+        if stream in (STREAM_CHANGE, STREAM_ACTIVITY):
+            # письмо остаётся внешней перепиской даже с нашим подтипом
+            return base & not_email & Domain(
+                'subtype_id', '=', subtypes.get(stream) or 0)
+        if stream in (STREAM_NOTE, STREAM_COMMENT):
+            # notification без наших подтипов — «прочее», не note/comment
+            return (base & not_email
+                    & Domain('message_type', '!=', 'notification')
+                    & Domain('subtype_id', '=', subtypes.get(stream) or 0))
+        return Domain.FALSE
+
+    @api.model
+    def _streams_filters_domain(self, channel):
+        """Минус потоки, выключенные участником в канале записи (§6).
+
+        Сообщения без потока («прочее») ни в один поточный домен не
+        попадают, поэтому видны всегда — как и в клиенте 15.
+        """
+        member = channel.sudo().self_member_id
+        if not member:
+            return Domain.TRUE
+        domain = Domain.TRUE
+        for stream, enabled in member._streams_get_filters().items():
+            if not enabled:
+                domain &= ~self._streams_stream_domain(stream)
+        return domain
+
+    # ------------------------------------------------------------
     # ЛЕНТА КАНАЛА С ПРОЕКЦИЯМИ
     # ------------------------------------------------------------
 
@@ -311,11 +365,20 @@ class MailMessage(models.Model):
         Ядровый fetch жёстко зашивает `model/res_id` треда; для наших
         каналов тред разворачивается в домен проекций, дальше работает
         ядровая пагинация.
+
+        Здесь же применяются фильтры потоков участника (§6): решение Р1
+        фазы 8 — фильтрация серверная, клиент рисует тумблеры и
+        перечитывает ленту. Контекст `streams_unfiltered=True` отключает
+        фильтр (мобильное API фильтрует у себя на клиенте, его контракт
+        меняться не должен).
         """
         if thread is not None and thread._name == 'discuss.channel' \
                 and len(thread) == 1 and thread.channel_kind:
             projection = thread._streams_message_domain() \
                 & Domain('message_type', '!=', 'user_notification')
+            if thread.channel_kind == 'record' \
+                    and not self.env.context.get('streams_unfiltered'):
+                projection &= self._streams_filters_domain(thread)
             domain = projection if domain is None \
                 else Domain(domain) & projection
             thread = None

@@ -274,10 +274,14 @@ class StreamsMobileApiController(http.Controller):
             # у личной ленты Changes собственный формат — /v1/changes/feed
             return mobile_error(
                 'bad_request', 'Use /v1/changes/feed for the Changes stream')
-        result = request.env['mail.message']._message_fetch(
-            None, thread=channel,
-            before=int(before_id) if before_id else None,
-            limit=_clamp_limit(limit))
+        # мобильный фильтрует потоки у себя (см. /channel/filters), поэтому
+        # серверный фильтр ленты фазы 8 здесь выключен: контракт v1 отдаёт
+        # канал целиком и меняться не должен
+        result = request.env['mail.message'].with_context(
+            streams_unfiltered=True)._message_fetch(
+                None, thread=channel,
+                before=int(before_id) if before_id else None,
+                limit=_clamp_limit(limit))
         # search внутри _message_fetch шёл правами пользователя: проекции
         # записей, которые ему читать нельзя, уже отфильтрованы ACL
         return {

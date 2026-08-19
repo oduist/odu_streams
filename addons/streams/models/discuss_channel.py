@@ -411,16 +411,51 @@ class DiscussChannel(models.Model):
     def streams_set_filters(self, filters):
         """Сохранить фильтры отображения текущего пользователя (§6)."""
         self.ensure_one()
-        partner = self.env.user.partner_id
-        if not partner:
-            return False
-        member = self.env['discuss.channel.member'].sudo().search([
-            ('channel_id', '=', self.id),
-            ('partner_id', '=', partner.id),
-        ], limit=1)
+        member = self._streams_self_member()
         if not member:
             return False
         return member._streams_set_filters(filters)
+
+    # ------------------------------------------------------------
+    # ПРОЧТЕНИЕ (решение Р4 фазы 8)
+    # ------------------------------------------------------------
+
+    def streams_mark_read(self, last_message_id):
+        """Отметить канал прочитанным до указанного сообщения.
+
+        Маршрута 15 `/mail/channel/set_last_seen_message` в 19 нет, а
+        ядровый `/discuss/channel/mark_as_read` ничего не возвращает —
+        лентам Changes и Notifications нужен свежий счётчик в ответе,
+        иначе после доскролла бейдж в сайдбаре остаётся старым.
+
+        Не участник — `False` без исключения: канал могли покинуть в
+        параллельной вкладке, ронять доскролл из-за этого незачем.
+        """
+        self.ensure_one()
+        last_message_id = int(last_message_id or 0)
+        if not last_message_id:
+            return False
+        member = self._streams_self_member()
+        if not member:
+            return False
+        # найти строку участника можно только через sudo (ACL на
+        # discuss.channel.member узкий), но сама отметка прочтения —
+        # бизнес-логика и идёт правами пользователя
+        member = member.sudo(False)
+        member._mark_as_read(last_message_id)
+        member.invalidate_recordset(['message_unread_counter'])
+        return {'unread': member.message_unread_counter}
+
+    def _streams_self_member(self):
+        """Участник канала для текущего пользователя (или пусто)."""
+        self.ensure_one()
+        partner = self.env.user.partner_id
+        if not partner:
+            return self.env['discuss.channel.member']
+        return self.env['discuss.channel.member'].sudo().search([
+            ('channel_id', '=', self.id),
+            ('partner_id', '=', partner.id),
+        ], limit=1)
 
     # ------------------------------------------------------------
     # ПУБЛИКАЦИЯ

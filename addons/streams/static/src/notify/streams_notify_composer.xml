@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <t t-name="streams.NotifyComposer">
+        <Dialog size="'md'" title="title" contentClass="'o-streams-NotifyComposer'">
+            <t t-set-slot="default">
+                <div t-if="state.error" class="alert alert-warning" role="alert" t-esc="state.error"/>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Recipients</label>
+                    <div t-if="isReply" class="o-streams-NotifyComposer-replyTo">
+                        <t t-esc="props.parentAuthorName"/>
+                        <small class="text-muted"> — the reply goes to the author only</small>
+                    </div>
+                    <t t-else="">
+                        <div t-if="state.recipients.length" class="o-streams-NotifyComposer-chips d-flex flex-wrap gap-1 mb-1">
+                            <span t-foreach="state.recipients" t-as="recipient" t-key="recipient.id"
+                                class="badge rounded-pill text-bg-primary o-streams-NotifyComposer-chip">
+                                <t t-esc="recipient.name"/>
+                                <a href="#" class="text-reset ms-1" aria-label="Remove"
+                                    t-on-click.prevent="() => this.onClickRemoveRecipient(recipient)">&#215;</a>
+                            </span>
+                        </div>
+                        <input type="text" class="form-control o-streams-NotifyComposer-search"
+                            placeholder="Search users…" t-att-value="state.query"
+                            t-on-input="onInputRecipient"/>
+                        <div t-if="state.results.length" class="o-streams-NotifyComposer-results list-group">
+                            <button t-foreach="state.results" t-as="result" t-key="result.id"
+                                type="button" class="list-group-item list-group-item-action o-streams-NotifyComposer-result"
+                                t-on-click="() => this.onClickResult(result)" t-esc="result.name"/>
+                        </div>
+                    </t>
+                </div>
+
+                <div t-if="props.recordName" class="mb-3 small text-muted">
+                    About: <t t-esc="props.recordName"/>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Message</label>
+                    <textarea class="form-control o-streams-NotifyComposer-body" rows="4"
+                        placeholder="What should they know?" t-att-value="state.body"
+                        t-on-input="onInputBody"/>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Attachments</label>
+                    <input type="file" multiple="multiple" class="form-control form-control-sm o-streams-NotifyComposer-files"
+                        t-on-change="onChangeFiles"/>
+                    <div t-if="state.attachments.length" class="o-streams-NotifyComposer-attachments mt-1">
+                        <div t-foreach="state.attachments" t-as="attachment" t-key="attachment.id"
+                            class="o-streams-NotifyComposer-attachment small">
+                            <i class="fa fa-paperclip me-1"/><t t-esc="attachment.name"/>
+                            <span class="text-muted ms-1" t-esc="formatSize(attachment.size)"/>
+                            <a href="#" class="ms-1" aria-label="Remove"
+                                t-on-click.prevent="() => this.onClickRemoveAttachment(attachment)">&#215;</a>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Voice message</label>
+                    <div class="o-streams-NotifyComposer-voice d-flex align-items-center gap-2">
+                        <t t-if="isRecording">
+                            <button class="btn btn-sm btn-danger o-streams-NotifyComposer-stopRecord"
+                                type="button" t-att-disabled="voiceRecorder.isActionPending"
+                                t-on-click="onClickRecord">
+                                <i class="fa fa-stop me-1"/>Stop
+                            </button>
+                            <span class="o-streams-NotifyComposer-recordTimer"
+                                t-att-class="{ 'text-danger': voiceRecorder.limitWarning }"
+                                t-esc="voiceRecorder.elapsed"/>
+                        </t>
+                        <t t-elif="state.voice">
+                            <audio controls="controls" class="flex-grow-1" t-att-src="voiceUrl(state.voice.id)"/>
+                            <button class="btn btn-sm btn-link o-streams-NotifyComposer-removeVoice"
+                                type="button" t-on-click="onClickRemoveVoice">Remove</button>
+                        </t>
+                        <t t-else="">
+                            <button class="btn btn-sm btn-secondary o-streams-NotifyComposer-record"
+                                type="button" t-att-disabled="voiceRecorder.isActionPending"
+                                t-on-click="onClickRecord">
+                                <i class="fa fa-microphone me-1"/>Record voice
+                            </button>
+                        </t>
+                    </div>
+                </div>
+
+                <div class="mb-1">
+                    <label class="form-check o-streams-NotifyComposer-sticky">
+                        <input type="checkbox" class="form-check-input"
+                            t-att-checked="state.isSticky or isStickyForced"
+                            t-att-disabled="isStickyForced"
+                            t-on-change="onChangeSticky"/>
+                        <span class="form-check-label">Sticky</span>
+                    </label>
+                    <div t-if="isStickyForced" class="small text-muted o-streams-NotifyComposer-hint">
+                        Voice notifications are always sticky.
+                    </div>
+                    <div t-elif="state.isSticky" class="small text-muted o-streams-NotifyComposer-hint">
+                        The popup stays until the recipient closes it.
+                    </div>
+                    <t t-else="">
+                        <label class="form-label mt-2">Timeout (seconds)</label>
+                        <input type="number" min="3" max="300"
+                            class="form-control o-streams-NotifyComposer-timeout"
+                            t-att-value="state.timeout" t-on-change="onChangeTimeout"/>
+                    </t>
+                </div>
+            </t>
+            <t t-set-slot="footer">
+                <button class="btn btn-primary o-streams-NotifyComposer-send" type="button"
+                    t-att-disabled="isSendDisabled" t-on-click="onClickSend">Send</button>
+                <button class="btn btn-secondary o-streams-NotifyComposer-discard" type="button"
+                    t-on-click="props.close">Discard</button>
+            </t>
+        </Dialog>
+    </t>
+
+</templates>

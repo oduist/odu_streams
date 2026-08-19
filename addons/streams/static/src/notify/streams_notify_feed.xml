@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <t t-name="streams.NotifyFeed">
+        <div class="o-streams-NotifyFeed d-flex flex-column flex-grow-1 w-100 overflow-hidden">
+            <div class="o-streams-NotifyFeed-topbar d-flex align-items-center gap-2 p-2 border-bottom">
+                <div class="btn-group btn-group-sm" role="group">
+                    <button class="btn o-streams-NotifyFeed-boxButton" type="button" name="received"
+                        t-att-class="state.box === 'received' ? 'btn-primary o-active' : 'btn-secondary'"
+                        t-on-click="() => this.onClickBox('received')">Received</button>
+                    <button class="btn o-streams-NotifyFeed-boxButton" type="button" name="sent"
+                        t-att-class="state.box === 'sent' ? 'btn-primary o-active' : 'btn-secondary'"
+                        t-on-click="() => this.onClickBox('sent')">Sent</button>
+                </div>
+                <button class="btn btn-sm btn-secondary o-streams-NotifyFeed-newButton ms-auto"
+                    type="button" t-on-click="onClickNew">New notification</button>
+                <button class="btn btn-sm btn-link o-streams-NotifyFeed-muteButton"
+                    type="button" t-on-click="onClickMute"
+                    t-att-title="isSoundMuted ? 'Notification sound is muted' : 'Mute the notification sound'">
+                    <i t-att-class="isSoundMuted ? 'fa fa-volume-off' : 'fa fa-volume-up'"/>
+                </button>
+            </div>
+
+            <div class="o-streams-NotifyFeed-list flex-grow-1 overflow-auto p-2" t-ref="list">
+                <div t-if="state.isLoading" class="o-streams-NotifyFeed-loading text-muted p-2">
+                    <i class="fa fa-circle-o-notch fa-spin me-1"/>Loading notifications…
+                </div>
+                <div t-elif="!state.items.length" class="o-streams-NotifyFeed-empty text-muted text-center p-4">
+                    No notifications yet. Use the Notify button on a record, or New notification here.
+                </div>
+                <t t-else="">
+                    <div t-foreach="state.items" t-as="item" t-key="item.id"
+                        class="o-streams-NotifyFeed-item"
+                        t-att-class="{ 'o-unread': isUnread(item) }"
+                        t-att-data-notify-id="item.id">
+                        <StreamsNotifyCard notify="item">
+                            <t t-if="state.box === 'sent'">
+                                <div class="o-streams-NotifyFeed-recipients small">
+                                    <div t-foreach="item.recipients or []" t-as="recipient" t-key="recipient.user_id"
+                                        class="o-streams-NotifyFeed-recipient d-flex gap-2">
+                                        <span class="o-streams-NotifyFeed-recipientName" t-esc="recipient.name"/>
+                                        <span t-if="recipient.read_date" class="o-streams-NotifyFeed-read text-muted">
+                                            Read at <t t-esc="formatReadDate(recipient.read_date)"/>
+                                        </span>
+                                        <span t-else="" class="o-streams-NotifyFeed-unread text-muted">Unread</span>
+                                    </div>
+                                </div>
+                            </t>
+                            <t t-else="">
+                                <div class="o-streams-NotifyFeed-actions">
+                                    <button class="btn btn-sm btn-link o-streams-NotifyFeed-reply px-0"
+                                        type="button" t-on-click="() => this.onClickReply(item)">Reply</button>
+                                </div>
+                            </t>
+                        </StreamsNotifyCard>
+                    </div>
+                    <div t-if="state.hasMore" class="o-streams-NotifyFeed-more text-center">
+                        <button class="btn btn-sm btn-link" type="button"
+                            t-on-click="onClickLoadMore">Load more</button>
+                    </div>
+                </t>
+            </div>
+        </div>
+    </t>
+
+</templates>

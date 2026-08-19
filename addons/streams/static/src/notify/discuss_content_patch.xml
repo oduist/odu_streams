@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <!--
+        Канал Notifications рисуется своей лентой вместо Thread+Composer:
+        уведомления не `mail.message`, ядровому ThreadView здесь нечего
+        показывать (A19). Якорь `core-content` — именованный «крючок»
+        ядра, `$0` сохраняет оригинал для всех прочих каналов.
+
+        Форма патча (`position="replace"` + `$0`, ветка в `t-else`)
+        намеренно совпадает с патчем ленты Changes
+        (`changes/discuss_content_changes_patch.xml`): второй по загрузке
+        патч находит `core-content` уже внутри `t-else` первого и
+        оборачивает его ещё раз, поэтому порядок пакетов не важен.
+    -->
+    <t t-inherit="mail.DiscussContent" t-inherit-mode="extension">
+        <xpath expr="//t[@name='core-content']" position="replace">
+            <t t-if="thread?.channel_kind === 'notifications'">
+                <StreamsNotifyFeed thread="thread" t-key="thread.localId"/>
+            </t>
+            <t t-else="">$0</t>
+        </xpath>
+    </t>
+
+</templates>

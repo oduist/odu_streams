@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <t t-name="streams.NotifyMenu">
+        <div class="o-streams-NotifyMenu position-relative d-flex align-items-center">
+            <button class="btn" type="button" aria-label="Notifications" title="Notifications"
+                t-on-click="onClick">
+                <i class="fa fa-lg fa-bell-o" role="img"/>
+                <span t-if="notifyState.counter"
+                    class="o-streams-NotifyMenu-counter badge rounded-pill"
+                    t-esc="counterLabel"/>
+            </button>
+        </div>
+    </t>
+
+</templates>

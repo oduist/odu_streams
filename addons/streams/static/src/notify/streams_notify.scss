@@ -1,0 +1,81 @@
+// Подсистема уведомлений (§12): попапы, колокол, композер, лента.
+
+// Попапы (§12.4). Правый нижний угол — ядровые тосты живут в правом
+// верхнем (`.o_notification_manager`), пересекаться им незачем.
+// z-index тот же, что у ядровых нотификаций ($o-notification-zindex,
+// 1055): подниматься выше нельзя — накрыли бы модальные диалоги, в том
+// числе собственный композер. Порядок при равном z-index решает
+// монтирование, а наш контейнер зарегистрирован с sequence 110.
+.o-streams-NotifyContainer {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    z-index: 1055;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+    pointer-events: none;
+
+    > * {
+        pointer-events: auto;
+    }
+}
+
+.o-streams-NotifyPopup {
+    width: 340px;
+    padding: 8px 12px;
+    border: 1px solid $border-color;
+    border-radius: 4px;
+    background-color: $o-view-background-color;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .2);
+
+    &.o-sticky {
+        border-left: 3px solid $o-brand-primary;
+    }
+
+    audio {
+        width: 100%;
+    }
+}
+
+// Колокол в навбаре (§11.4)
+.o-streams-NotifyMenu {
+    .o-streams-NotifyMenu-counter {
+        position: absolute;
+        top: 2px;
+        right: 0;
+        background-color: $o-brand-primary;
+        color: #fff;
+        font-size: 10px;
+    }
+}
+
+// Композер (§12.2)
+.o-streams-NotifyComposer {
+    .o-streams-NotifyComposer-results {
+        max-height: 180px;
+        overflow-y: auto;
+    }
+
+    audio {
+        max-width: 100%;
+    }
+}
+
+// Лента канала Notifications (§12.5)
+.o-streams-NotifyFeed {
+    .o-streams-NotifyFeed-item {
+        padding: 8px;
+        border-bottom: 1px solid $border-color;
+
+        // непрочитанное подсвечивается, пока не доскроллили (G3)
+        &.o-unread {
+            border-left: 3px solid $o-brand-primary;
+        }
+    }
+
+    audio {
+        max-width: 100%;
+    }
+}

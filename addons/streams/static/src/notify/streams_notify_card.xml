@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <t t-name="streams.NotifyCard">
+        <div class="o-streams-NotifyCard-header d-flex align-items-center gap-2">
+            <span class="o-streams-NotifyCard-author fw-bold text-truncate" t-esc="props.notify.author and props.notify.author.name"/>
+            <small class="o-streams-NotifyCard-date text-muted flex-shrink-0" t-esc="formatDate(props.notify.date)"/>
+            <div class="ms-auto d-flex align-items-center">
+                <t t-slot="header-end"/>
+            </div>
+        </div>
+        <div t-if="props.notify.record_name" class="o-streams-NotifyCard-record small text-truncate">
+            <a href="#" t-on-click="onClickRecord" t-esc="props.notify.record_name"/>
+        </div>
+        <div class="o-streams-NotifyCard-body" t-out="body"/>
+        <div t-if="props.notify.voice" class="o-streams-NotifyCard-voice d-flex align-items-center gap-2">
+            <audio controls="controls" class="flex-grow-1" t-att-src="voiceUrl(props.notify.voice.id)"/>
+            <small class="text-muted flex-shrink-0" t-esc="formatDuration(props.notify.voice.duration)"/>
+        </div>
+        <div t-if="props.notify.transcript" class="o-streams-NotifyCard-transcript small fst-italic text-muted" t-esc="props.notify.transcript"/>
+        <div t-elif="isTranscribing" class="o-streams-NotifyCard-transcript small fst-italic text-muted">
+            <i class="fa fa-circle-o-notch fa-spin me-1"/>Transcribing…
+        </div>
+        <div t-if="props.notify.attachments and props.notify.attachments.length" class="o-streams-NotifyCard-attachments">
+            <a t-foreach="props.notify.attachments" t-as="attachment" t-key="attachment.id"
+                class="o-streams-NotifyCard-attachment d-block small text-truncate"
+                t-att-href="attachmentUrl(attachment.id)">
+                <i class="fa fa-paperclip me-1"/><t t-esc="attachment.name"/>
+            </a>
+        </div>
+        <t t-slot="default"/>
+    </t>
+
+</templates>

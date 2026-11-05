@@ -253,10 +253,16 @@ class TestStreamsUi(common.TransactionCase):
         partner.message_post(
             body='incoming mail', message_type='email',
             subtype_xmlid='mail.mt_comment')
-        # «прочее»: системный автолог без наших подтипов
+        # системный автолог без наших подтипов — поток change (§6,
+        # решение пользователя 2026-08-20)
         partner.message_post(
             body='system log', message_type='notification',
             subtype_xmlid='mail.mt_note')
+        # «прочее»: чужой подтип, посланный не автологом и не письмом —
+        # ни в один поток не попадает и фильтрами не скрывается
+        partner.message_post(
+            body='foreign subtype', message_type='comment',
+            subtype_xmlid='mail.mt_activities')
         # трекинг сравнивает значения от предыдущего precommit: без сброса
         # правка записи, созданной в этой же транзакции, изменением не станет
         self._flush_tracking()
@@ -328,6 +334,31 @@ class TestStreamsUi(common.TransactionCase):
         self.assertLessEqual(
             grouped['change'], self._feed_ids(channel),
             'включённый change возвращается в ленту')
+
+    def test_12b_system_autolog_is_a_change(self):
+        """Системный автолог прячется фильтром Changes (§6, 2026-08-20).
+
+        До 2026-08-20 такие сообщения были «прочим» и висели в ленте при
+        любых фильтрах — жалоба пользователя на «Lead/Opportunity created»
+        в Discuss с выключенным Changes.
+        """
+        partner, channel = self._start_discussion('Streams UI Autolog')
+        channel.sudo().add_members(partner_ids=self.env.user.partner_id.ids)
+        autolog = partner.message_post(
+            body='Lead/Opportunity created', message_type='notification',
+            subtype_xmlid='mail.mt_note')
+        self.assertEqual(autolog.sudo()._streams_classify(), 'change')
+        self.assertIn(
+            channel, autolog.sudo().stream_channel_ids,
+            'автолог в канал записи всё равно проецируется')
+        self.assertNotIn(
+            autolog.id, self._feed_ids(channel),
+            'при выключенном Changes автолога в ленте нет')
+
+        channel.streams_set_filters({'change': True})
+        self.assertIn(
+            autolog.id, self._feed_ids(channel),
+            'включённый Changes возвращает автолог')
 
     def test_13_unfiltered_context_disables_filtering(self):
         """`streams_unfiltered=True` отключает фильтр (контракт мобильного)."""

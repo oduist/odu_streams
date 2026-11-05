@@ -137,7 +137,8 @@ export class MailMessage extends mailModels.MailMessage {
      * `mail.message._streams_classify_vals`).
      *
      * Порядок проверок повторяет серверный: письмо — всегда внешняя
-     * переписка, системный автолог без нашего подтипа — «прочее».
+     * переписка, системный автолог без нашего подтипа — `change`
+     * (решение пользователя 2026-08-20).
      *
      * @param {Object} message
      * @returns {string|false}
@@ -160,7 +161,8 @@ export class MailMessage extends mailModels.MailMessage {
             return STREAMS_SUBTYPES[xmlid];
         }
         if (message.message_type === "notification") {
-            return false;
+            // системный автолог — изменение записи
+            return "change";
         }
         if (xmlid === "mail.mt_note") {
             return "note";

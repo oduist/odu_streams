@@ -7,7 +7,7 @@ from odoo.exceptions import AccessError
 from odoo.fields import Domain
 
 from .mail_message import (
-    STREAM_CHANNEL_TRIGGERS, STREAM_COMMENT, STREAM_MESSAGE)
+    STREAM_CHANGE, STREAM_CHANNEL_TRIGGERS, STREAM_COMMENT, STREAM_MESSAGE)
 
 _logger = logging.getLogger(__name__)
 
@@ -153,7 +153,13 @@ class MailThread(models.AbstractModel):
             self.env[
                 'mail.channel.external.participant']._streams_subscribe_inviters(
                     channel, message.sudo().author_id)
-        if stream:
+        if stream and stream != STREAM_CHANGE:
+            # change по шине не рассылается: фильтр Changes выключен по
+            # умолчанию, а клиент вставляет пришедшее сообщение, не
+            # спрашивая фильтров — иначе автолог всплывал бы в ленте у
+            # того, кто изменения скрыл. Трекинг через `_message_log`
+            # хука вообще не проходит, так что поведение единое: change
+            # появляется при перечитке ленты (§5.7, 2026-08-20).
             self._streams_broadcast(channel, message)
         return channel
 

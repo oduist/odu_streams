@@ -190,6 +190,11 @@ class DiscussChannelMember(models.Model):
         про `model='discuss.channel'` и проекции не видит, а изменения
         (`change`) по §5.7 не должны влиять на счётчик. Собственные
         сообщения участника не считаются (как в 15).
+
+        `change` отсекается двумя условиями сразу: подтипом
+        `streams.mt_change` (изменение поля) и типом `notification`
+        (системный автолог, с 2026-08-20 тоже `change`); из notification
+        считается только активность.
         """
         subtypes = self.env['mail.message']._streams_subtype_ids()
         change_subtype_id = subtypes.get(STREAM_CHANGE) or 0

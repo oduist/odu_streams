@@ -149,7 +149,9 @@ class TestStreams(common.TransactionCase):
         self.assertFalse(
             self._channel_of(partner), 'авто-лог канал не создаёт')
         creation_log = self._messages_of(partner)[-1:]
-        self.assertFalse(creation_log._streams_classify())
+        self.assertEqual(
+            creation_log._streams_classify(), 'change',
+            'системный автолог — изменение записи (§6, 2026-08-20)')
 
     # 6
     def test_06_follower_and_member_sync(self):

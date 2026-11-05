@@ -149,9 +149,10 @@ class TestStreamsGuest(common.TransactionCase):
             anchor, self.env['mail.message'].sudo().search([
                 ('model', '=', record._name), ('res_id', '=', record.id)]))
         self.assertNotIn(anchor, before)
-        self.assertFalse(
-            anchor._streams_classify(),
-            'якорь — «прочее»: канал не заводит и в потоки не входит')
+        self.assertEqual(
+            anchor._streams_classify(), 'change',
+            'якорь — системный автолог: канал не заводит, прячется'
+            ' фильтром Changes и гостю не виден')
         self.assertEqual(anchor.message_type, 'notification')
         self.assertFalse(
             anchor.subtype_id.internal,

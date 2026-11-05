@@ -10,8 +10,9 @@ from .streams_partner_source import STREAMS_PARTNER_VIEW
 
 _logger = logging.getLogger(__name__)
 
-# Потоки сообщений (§2 ТЗ). False означает «прочее»: системное сообщение,
-# которое не принадлежит ни одному потоку и канал записи не заводит.
+# Потоки сообщений (§2 ТЗ). False означает «прочее»: сообщение, которое не
+# принадлежит ни одному потоку и канал записи не заводит (`user_notification`
+# и чужой подтип вне автолога; сам автолог — `change`, см. классификатор).
 STREAM_NOTE = 'note'
 STREAM_COMMENT = 'comment'
 STREAM_MESSAGE = 'message'
@@ -124,7 +125,15 @@ class MailMessage(models.Model):
           подтип у него comment (в 19 у исходящих тип `email_outgoing`);
         * `message_type='notification'` без нашего подтипа — системный
           автолог (создание записи, падение job, приглашение в канал):
-          это «прочее», канал по нему не заводится.
+          это `change` (решение пользователя 2026-08-20, §6). Смысл тот
+          же, что у изменения поля — запись изменилась сама, без участия
+          человека, — поэтому автолог прячется тумблером Changes.
+          Канал записи по нему по-прежнему не заводится: `change` не
+          входит в `STREAM_CHANNEL_TRIGGERS`.
+
+        «Прочее» (`False`) после этого остаётся за `user_notification` и
+        за сообщением с чужим подтипом, посланным не как автолог и не
+        письмом: такие ни в один поток не попадают и видны всегда.
         """
         if message_type == 'user_notification':
             return False
@@ -136,7 +145,8 @@ class MailMessage(models.Model):
                 if subtypes.get(stream) and subtype_id == subtypes[stream]:
                     return stream
         if message_type == 'notification':
-            return False
+            # системный автолог — изменение записи (§6)
+            return STREAM_CHANGE
         if subtype_id and subtype_id == subtypes.get(STREAM_NOTE):
             return STREAM_NOTE
         if subtype_id and subtype_id == subtypes.get(STREAM_COMMENT):
@@ -181,8 +191,9 @@ class MailMessage(models.Model):
                     & (
                         Domain('subtype_id', '=', message_id)
                         | (
-                            # notification без наших подтипов — «прочее»
-                            # (в том числе якорь треда): гостю не видно
+                            # notification без наших подтипов — автолог,
+                            # он же change (в том числе якорь треда):
+                            # гостю не видно
                             Domain('message_type', '!=', 'notification')
                             & Domain('subtype_id', '=', comment_id)
                         )
@@ -340,12 +351,24 @@ class MailMessage(models.Model):
                 | (not_email
                    & Domain('subtype_id', '=',
                             subtypes.get(STREAM_MESSAGE) or 0)))
-        if stream in (STREAM_CHANGE, STREAM_ACTIVITY):
+        if stream == STREAM_ACTIVITY:
             # письмо остаётся внешней перепиской даже с нашим подтипом
             return base & not_email & Domain(
                 'subtype_id', '=', subtypes.get(stream) or 0)
+        if stream == STREAM_CHANGE:
+            # к изменению поля добавлен системный автолог: notification
+            # без наших подтипов (решение пользователя 2026-08-20).
+            # `not in` у m2o в 19 накрывает и NULL-подтип — проверено
+            # тестом матрицы, поэтому автолог без подтипа тоже change.
+            return base & not_email & (
+                Domain('subtype_id', '=', subtypes.get(STREAM_CHANGE) or 0)
+                | (Domain('message_type', '=', 'notification')
+                   & Domain('subtype_id', 'not in', [
+                       subtypes.get(STREAM_ACTIVITY) or 0,
+                       subtypes.get(STREAM_MESSAGE) or 0])))
         if stream in (STREAM_NOTE, STREAM_COMMENT):
-            # notification без наших подтипов — «прочее», не note/comment
+            # notification без наших подтипов — автолог (change),
+            # не note/comment
             return (base & not_email
                     & Domain('message_type', '!=', 'notification')
                     & Domain('subtype_id', '=', subtypes.get(stream) or 0))
@@ -355,8 +378,10 @@ class MailMessage(models.Model):
     def _streams_filters_domain(self, channel):
         """Минус потоки, выключенные участником в канале записи (§6).
 
-        Сообщения без потока («прочее») ни в один поточный домен не
-        попадают, поэтому видны всегда — как и в клиенте 15.
+        Сообщения без потока («прочее» — `user_notification` и чужой
+        подтип вне автолога) ни в один поточный домен не попадают,
+        поэтому видны всегда. Системный автолог с 2026-08-20 к «прочему»
+        не относится: он `change` и скрывается тумблером Changes.
         """
         member = channel.sudo().self_member_id
         if not member:
